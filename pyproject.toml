@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonoma-cli"
+version = "0.1.0"
+description = "CLI para ver cursos y descargar archivos del Campus Virtual de la Universidad Autonoma del Peru"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Just253" }]
+keywords = ["autonoma", "campus", "cli", "aspnet", "descargas"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+]
+dependencies = []
+
+[project.scripts]
+autonoma = "autonoma_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Just253/autonoma-cli"
+
+[tool.setuptools]
+packages = ["autonoma_cli"]

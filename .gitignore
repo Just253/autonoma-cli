@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datos locales: credenciales, cookies, cache y descargas
+credentials.json
+credentials.txt
+session.cookies
+settings.json
+cache/
+descargas/
+manifest.json
+*.part
+
+# Entorno
+.env
+.env.*
