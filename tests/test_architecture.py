@@ -2,20 +2,77 @@
 
 No prueba comportamiento: fija donde vive cada cosa. Si algo falla, el
 mensaje dice que hacer, no solo que un numero no cuadra.
+
+La guardia esta escrita para el estado de archivo unico *y* para el split en
+paquetes (``commands/``, ``config/``): cada regla se aplica solo a las rutas
+que existen, asi no hay que tocarla mientras se mueve el codigo.
 """
 
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1] / "autonoma_cli"
-MODULES = {path.name: path for path in sorted(PACKAGE.glob("*.py"))}
+# Clave = ruta posix relativa al paquete. Antes se usaba path.name, que cegaba
+# la guardia a las subcarpetas y hacia colisionar dos settings.py.
+MODULES = {
+    path.relative_to(PACKAGE).as_posix(): path
+    for path in sorted(PACKAGE.rglob("*.py"))
+    if "__pycache__" not in path.parts
+}
 # Duenos legitimos de JSON, uno por formato; el resto usa cache.ensure o render.
-LOADS = {"cache.py", "client.py", "config.py", "downloader.py"}
+LOADS = {"cache.py", "client.py", "downloader.py"}
 DUMPS = LOADS | {"render.py"}
 GRAPH = {"cli.py", "__main__.py"}  # unicos que pueden importar cli
+
+# (patron sobre la ruta posix, maximo de lineas, que hacer si se pasa).
+SIZE_RULES = (
+    (
+        r"cli\.py",
+        260,
+        "cli.py es solo el parser y el despacho: los run_* van en commands.py "
+        "(despues commands/) y la salida en render.py.",
+    ),
+    (
+        r"commands\.py",
+        500,
+        "commands.py solo guarda lo compartido (client_for, out_dir, report_*): "
+        "cada run_* se muda a commands/<comando>.py, maximo 120 lineas cada uno.",
+    ),
+    (
+        r"commands/.+\.py",
+        120,
+        "un comando por archivo: si crece, saca el plan a selectors/downloader y "
+        "la tabla a render.py.",
+    ),
+    (
+        r"config\.py",
+        500,
+        "config.py se parte por tema en config/ (paths, credenciales, settings, "
+        "io), maximo 200 lineas por archivo.",
+    ),
+    (
+        r"config/.+\.py",
+        200,
+        "un tema por archivo (paths, credenciales, settings, io) en vez de "
+        "engordar uno solo.",
+    ),
+)
+
+
+def is_config(name: str) -> bool:
+    """True para ``config.py`` y para cualquier archivo de ``config/``."""
+
+    return name == "config.py" or name.startswith("config/")
+
+
+def is_commands(name: str) -> bool:
+    """True para ``commands.py`` y para cualquier archivo de ``commands/``."""
+
+    return name == "commands.py" or name.startswith("commands/")
 
 
 def tree(name: str) -> ast.Module:
@@ -24,11 +81,51 @@ def tree(name: str) -> ast.Module:
 
 def calls(name: str, function: str) -> bool:
     """True si el modulo llama a ``function(...)`` o ``algo.function(...)``."""
+
     return any(
         isinstance(node, ast.Call)
         and getattr(node.func, "id", getattr(node.func, "attr", None)) == function
         for node in ast.walk(tree(name))
     )
+
+
+def defines(name: str, function: str) -> bool:
+    """True si el modulo define ``def function(...)`` de nivel superior."""
+
+    return any(
+        isinstance(node, ast.FunctionDef) and node.name == function
+        for node in ast.walk(tree(name))
+    )
+
+
+def references(name: str, function: str) -> bool:
+    """True si el modulo menciona ``function`` como nombre o atributo."""
+
+    return any(
+        (isinstance(node, ast.Name) and node.id == function)
+        or (isinstance(node, ast.Attribute) and node.attr == function)
+        for node in ast.walk(tree(name))
+    )
+
+
+def top_level_functions(name: str) -> list[ast.FunctionDef]:
+    return [node for node in tree(name).body if isinstance(node, ast.FunctionDef)]
+
+
+def exports(name: str) -> set[str]:
+    """Nombres que quedan ligados en el modulo (imports y asignaciones)."""
+
+    found: set[str] = set()
+    for node in tree(name).body:
+        if isinstance(node, ast.ImportFrom):
+            found |= {alias.asname or alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.Import):
+            found |= {(alias.asname or alias.name).split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.Assign):
+            found |= {target.id for target in node.targets if isinstance(target, ast.Name)}
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            found.add(node.target.id)
+    return found
 
 
 def imports(name: str) -> set[str]:
@@ -43,51 +140,77 @@ def imports(name: str) -> set[str]:
                 else:
                     found |= {alias.name.split(".")[0] for alias in node.names}
             elif node.module and node.module.split(".")[0] == "autonoma_cli":
-                found.add(node.module.split(".")[1] if "." in node.module else "")
+                parts = node.module.split(".")
+                if len(parts) > 1:
+                    found.add(parts[1])
+                else:
+                    # ``from autonoma_cli import commands`` importa el submodulo.
+                    found |= {alias.name.split(".")[0] for alias in node.names}
     return found
 
 
 class ArchitectureTests(unittest.TestCase):
     def test_modules_stay_small(self) -> None:
-        for name, limit in {"cli.py": 260, "commands.py": 500}.items():
-            lines = len(MODULES[name].read_text(encoding="utf-8").splitlines())
-            self.assertLessEqual(
-                lines, limit,
-                f"{name} tiene {lines} lineas (maximo {limit}): los run_* van en "
-                "commands.py y la salida en render.py.",
-            )
+        self.assertIn(
+            "cli.py", MODULES,
+            "cli.py tiene que existir: si cambio de nombre, actualiza esta guardia "
+            "antes de seguir (si no, queda ciega).",
+        )
+        for name, path in MODULES.items():
+            for pattern, limit, hint in SIZE_RULES:
+                if not re.fullmatch(pattern, name):
+                    continue
+                lines = len(path.read_text(encoding="utf-8").splitlines())
+                with self.subTest(module=name):
+                    self.assertLessEqual(
+                        lines, limit,
+                        f"{name} tiene {lines} lineas (maximo {limit}): {hint}",
+                    )
 
     def test_cli_and_commands_do_not_print(self) -> None:
-        for name in ("cli.py", "commands.py"):
-            self.assertFalse(
-                calls(name, "print"),
-                f"{name} no imprime: usa render.text/emit_json o ui.table.",
-            )
+        for name in (n for n in MODULES if n == "cli.py" or is_commands(n)):
+            with self.subTest(module=name):
+                self.assertFalse(
+                    calls(name, "print"),
+                    f"{name} no imprime: usa render.text/emit_json o ui.table.",
+                )
 
     def test_cache_is_written_from_cache_module(self) -> None:
-        users = sorted(name for name, path in MODULES.items()
-                       if "write_private_text" in path.read_text(encoding="utf-8"))
+        users = {name for name in MODULES
+                 if defines(name, "write_private_text") or references(name, "write_private_text")}
+        owners = sorted(name for name in users if is_config(name))
         self.assertEqual(
-            users, ["cache.py", "config.py"],
-            "write_private_text es de config.py y la cache la guarda solo cache.py "
-            "(cache.ensure): commands.py no persiste nada a mano.",
+            len(owners), 1,
+            "write_private_text lo define y usa un solo archivo de config "
+            f"(config.py o un unico config/*.py), pero aparece en {owners}: deja "
+            "una sola implementacion y que la cache la importe de ahi.",
+        )
+        self.assertEqual(
+            sorted(users), ["cache.py", *owners],
+            "write_private_text es de config (hoy config.py, despues config/io.py) y "
+            "la cache la guarda solo cache.py (cache.ensure): commands.py no "
+            f"persiste nada a mano. Usuarios encontrados: {sorted(users)}.",
         )
 
-    def test_json_readers_belong_to_a_format_owner(self) -> None:
-        for name in MODULES.keys() - LOADS:
-            self.assertFalse(
-                calls(name, "loads"),
-                f"{name} no lee JSON a mano: la cache pasa por cache.ensure "
-                f"(lectores permitidos: {sorted(LOADS)}).",
-            )
-
-    def test_json_writers_belong_to_a_format_owner(self) -> None:
-        for name in MODULES.keys() - DUMPS:
-            self.assertFalse(
-                calls(name, "dumps"),
-                f"{name} no escribe JSON a mano: la cache la guarda cache.py y la "
-                f"salida --json render.emit_json (permitidos: {sorted(DUMPS)}).",
-            )
+    def test_json_belongs_to_a_format_owner(self) -> None:
+        readers = LOADS | {name for name in MODULES if is_config(name)}
+        writers = DUMPS | {name for name in MODULES if is_config(name)}
+        with self.subTest(kind="loads"):
+            for name in MODULES.keys() - readers:
+                self.assertFalse(
+                    calls(name, "loads"),
+                    f"{name} no lee JSON a mano: la cache pasa por cache.ensure "
+                    f"(lectores permitidos: {sorted(readers)}); prohibido en cli.py, "
+                    "commands*, models.py, selectors.py y ui.py.",
+                )
+        with self.subTest(kind="dumps"):
+            for name in MODULES.keys() - writers:
+                self.assertFalse(
+                    calls(name, "dumps"),
+                    f"{name} no escribe JSON a mano: la cache la guarda cache.py y la "
+                    f"salida --json render.emit_json (permitidos: {sorted(writers)}); "
+                    "prohibido en cli.py, commands*, models.py, selectors.py y ui.py.",
+                )
 
     def test_import_graph(self) -> None:
         self.assertFalse(
@@ -95,21 +218,44 @@ class ArchitectureTests(unittest.TestCase):
             "solo cli.py y __main__.py importan cli: el grafo es "
             "cli -> commands -> {cache, render, selectors, client, ...}.",
         )
+        commands_ok = GRAPH | {name for name in MODULES if is_commands(name)}
         self.assertFalse(
-            [name for name in MODULES.keys() - {"cli.py", "commands.py"}
-             if "commands" in imports(name)],
-            "commands.py solo lo importa cli.py: si otro modulo lo importa, hay un ciclo.",
+            [name for name in MODULES.keys() - commands_ok if "commands" in imports(name)],
+            "commands.py (y despues commands/) solo lo importa cli.py: si otro modulo "
+            "lo importa, hay un ciclo.",
         )
 
     def test_every_run_takes_client_first(self) -> None:
-        for node in tree("commands.py").body:
-            if isinstance(node, ast.FunctionDef) and node.name.startswith("run_"):
+        for name in (n for n in MODULES if is_commands(n)):
+            for node in top_level_functions(name):
+                if not node.name.startswith("run_"):
+                    continue
                 params = node.args.args
-                self.assertTrue(
-                    params and params[0].arg == "client",
-                    f"commands.{node.name} debe ser {node.name}(client, args): el "
-                    "cliente se inyecta desde cli.main, no se construye adentro.",
-                )
+                with self.subTest(module=name, function=node.name):
+                    self.assertTrue(
+                        params and params[0].arg == "client",
+                        f"{name}:{node.lineno} {node.name} debe ser "
+                        f"{node.name}(client, args): el cliente se inyecta desde "
+                        "cli.main, no se construye adentro.",
+                    )
+
+        init = "commands/__init__.py"
+        if init not in MODULES:
+            return
+        available = exports(init)
+        missing = [
+            f"{node.name} (en {name})"
+            for name in MODULES
+            if name.startswith("commands/") and name != init
+            for node in top_level_functions(name)
+            if node.name.startswith("run_") and node.name not in available
+        ]
+        self.assertFalse(
+            missing,
+            f"{init} no reexporta {missing}: cli.py hace "
+            "set_defaults(func=commands.run_x) y el AttributeError aparece al "
+            "ejecutar el comando, no al importar. Agrega el `from .modulo import run_x`.",
+        )
 
     def test_strip_html_is_defined_once(self) -> None:
         defined = {
@@ -121,20 +267,37 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(
             defined, {("models.py", "strip_html")},
             "strip_html se define una sola vez en models.py: client.py importa esa "
-            "version y no trae su propio _strip_tags.",
+            f"version y no trae su propio _strip_tags (encontrado: {sorted(defined)}).",
         )
 
     def test_only_commands_builds_the_campus_client(self) -> None:
         builders = {name for name in MODULES if calls(name, "CampusClient")}
-        self.assertIn(
-            "commands.py", builders,
+        self.assertTrue(
+            builders & {"commands.py", "commands/base.py"},
             "commands.client_for es quien construye CampusClient: cli.py solo lo "
             "importa para anotar el tipo.",
         )
+        allowed = {"client.py"} | {n for n in ("commands.py", "commands/base.py") if n in MODULES}
         self.assertLessEqual(
-            builders, {"client.py", "commands.py"},
+            builders, allowed,
             f"CampusClient solo se instancia en commands.client_for (lo instancian "
-            f"{builders}): el resto lo recibe como argumento.",
+            f"{sorted(builders)}): el resto lo recibe como argumento.",
+        )
+
+    def test_subpackages_have_init(self) -> None:
+        offenders = sorted(
+            folder.relative_to(PACKAGE).as_posix()
+            for folder in PACKAGE.rglob("*")
+            if folder.is_dir()
+            and folder.name != "__pycache__"
+            and any(folder.glob("*.py"))
+            and not (folder / "__init__.py").is_file()
+        )
+        self.assertFalse(
+            offenders,
+            f"estas subcarpetas tienen .py pero les falta __init__.py: {offenders}. "
+            "Sin el paquete no se importa en el wheel instalado aunque en el repo "
+            "parezca funcionar.",
         )
 
 
