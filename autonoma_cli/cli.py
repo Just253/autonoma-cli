@@ -17,16 +17,14 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import json
 import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
-from . import __version__, config, render, selectors
+from . import __version__, cache, config, render, selectors
 from .client import CampusClient
 from .downloader import (
     Manifest,
@@ -38,9 +36,6 @@ from .downloader import (
 from .errors import AuthenticationError, AutonomaError, CampusError, UsageError
 from .models import ClassSession, Course, Resource
 from . import ui
-
-COURSE_CACHE_TTL = 6 * 3600
-SCHEDULE_CACHE_TTL = 6 * 3600
 
 
 # --------------------------------------------------------------------------- #
@@ -76,111 +71,40 @@ def out_dir(args: argparse.Namespace) -> Path:
     return path
 
 
-def courses_cache_path() -> Path:
-    return config.cache_dir() / "cursos.json"
+def catalog(client: CampusClient, *, refresh: bool = False) -> list[Course]:
+    """Cursos del periodo con cache de 6 horas (el campus responde lento)."""
+    items = cache.ensure(
+        cache.for_campus(client.base_url),
+        f"cursos:{client.student_code}",
+        ttl=cache.MAX_AGE_CURSOS,
+        fetch=lambda: [dict(course.raw or {}) for course in client.get_courses()],
+        force=refresh,
+    )
+    records = items if isinstance(items, list) else []
+    return [Course.from_api(item, client.base_url) for item in records if isinstance(item, dict)]
 
 
-def load_courses(client: CampusClient, *, refresh: bool = False) -> list[Course]:
-    """Lista de cursos con cache de 6 horas (el campus responde lento)."""
-
-    path = courses_cache_path()
-    if not refresh and path.exists():
-        try:
-            document = json.loads(path.read_text(encoding="utf-8"))
-            fresh = time.time() - float(document.get("fetched_at", 0)) < COURSE_CACHE_TTL
-            if fresh and document.get("base_url") == client.base_url:
-                items = document.get("items")
-                if isinstance(items, list) and items:
-                    return [
-                        Course.from_api(item, client.base_url)
-                        for item in items
-                        if isinstance(item, dict)
-                    ]
-        except (OSError, ValueError, json.JSONDecodeError):
-            pass
-
-    courses = client.get_courses()
-    try:
-        config.write_private_text(
-            path,
-            json.dumps(
-                {
-                    "fetched_at": time.time(),
-                    "base_url": client.base_url,
-                    "student_code": client.student_code,
-                    "items": [course.raw for course in courses],
-                },
-                ensure_ascii=False,
-            ),
-        )
-    except OSError:
-        pass
-    return courses
-
-
-def schedule_cache_path() -> Path:
-    return config.cache_dir() / "horario.json"
-
-
-def _read_schedule_cache(path: Path) -> dict[str, Any]:
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-    return document if isinstance(document, dict) else {}
-
-
-def load_schedule(
-    client: CampusClient,
-    courses: Sequence[Course],
-    *,
-    refresh: bool = False,
+def schedule(
+    client: CampusClient, courses: Sequence[Course], *, refresh: bool = False
 ) -> list[ClassSession]:
     """Programacion de todos los cursos, con cache de 6 horas por grupo."""
-
-    path = schedule_cache_path()
-    document = {} if refresh else _read_schedule_cache(path)
-    cached = document.get("items") if document.get("base_url") == client.base_url else None
-    items: dict[str, Any] = dict(cached) if isinstance(cached, dict) else {}
-    now = time.time()
-    dirty = False
+    store = cache.for_campus(client.base_url)
     entries: list[ClassSession] = []
-
     for course in courses:
-        key = str(course.group_id)
-        record = items.get(key)
-        fresh = (
-            isinstance(record, dict)
-            and now - float(record.get("fetched_at") or 0) < SCHEDULE_CACHE_TTL
-            and isinstance(record.get("records"), list)
+        records = cache.ensure(
+            store,
+            f"horario:{course.group_id}",
+            ttl=cache.MAX_AGE_HORARIO,
+            fetch=lambda course=course: [
+                dict(entry.raw or {})
+                for entry in client.get_schedule(course.group_id, course=course.name)
+            ],
+            force=refresh,
         )
-        if fresh:
-            entries.extend(
-                ClassSession.from_api(item, group_id=course.group_id, course=course.name)
-                for item in record["records"]
-                if isinstance(item, dict)
-            )
-            continue
-        fetched = client.get_schedule(course.group_id, course=course.name)
-        entries.extend(fetched)
-        items[key] = {
-            "fetched_at": now,
-            "course": course.name,
-            "records": [entry.raw for entry in fetched],
-        }
-        dirty = True
-
-    if dirty or not path.exists():
-        try:
-            config.write_private_text(
-                path,
-                json.dumps(
-                    {"fetched_at": now, "base_url": client.base_url, "items": items},
-                    ensure_ascii=False,
-                ),
-            )
-        except OSError:
-            pass
+        entries.extend(
+            ClassSession.from_api(item, group_id=course.group_id, course=course.name)
+            for item in (records if isinstance(records, list) else ()) if isinstance(item, dict)
+        )
     return entries
 
 
@@ -333,7 +257,7 @@ def cmd_credenciales(args: argparse.Namespace) -> int:
 
 def cmd_cursos(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client, refresh=args.refresh)
+    courses = catalog(client, refresh=args.refresh)
     if args.json:
         render.emit_json([course.to_dict() for course in courses])
         return 0
@@ -367,7 +291,7 @@ def cmd_cursos(args: argparse.Namespace) -> int:
 
 def cmd_curso(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client)
+    courses = catalog(client, refresh=args.refresh)
     course = selectors.resolve_course(courses, args.curso)
     topics = client.get_syllabus(course.group_id)
     detail = client.get_course_detail(course.group_id, 0)
@@ -411,13 +335,13 @@ def cmd_curso(args: argparse.Namespace) -> int:
 
 def cmd_horario(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client)
+    courses = catalog(client, refresh=args.refresh)
     if args.curso:
         courses = [selectors.resolve_course(courses, args.curso)]
     else:
         active = [course for course in courses if course.state == "activo"]
         courses = active or courses
-    entries = load_schedule(client, courses, refresh=args.refresh)
+    entries = schedule(client, courses, refresh=args.refresh)
 
     start, end = selectors.schedule_range(args)
     if start is not None and end is not None:
@@ -446,9 +370,7 @@ def cmd_horario(args: argparse.Namespace) -> int:
 
 
 def _resources_of(
-    client: CampusClient,
-    course: Course,
-    sessions: Sequence[int] | None,
+    client: CampusClient, course: Course, sessions: Sequence[int] | None
 ) -> list[tuple[int, list[Resource]]]:
     if sessions:
         return [(session, client.get_session_resources(course.group_id, session)) for session in sessions]
@@ -457,7 +379,7 @@ def _resources_of(
 
 def cmd_recursos(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client)
+    courses = catalog(client, refresh=args.refresh)
     course = selectors.resolve_course(courses, args.curso)
     sessions = selectors.parse_sessions(args.sesion)
     grouped = _resources_of(client, course, sessions)
@@ -569,14 +491,14 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
 
 def cmd_descargar(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client)
+    courses = catalog(client, refresh=args.refresh)
     course = selectors.resolve_course(courses, args.curso)
     return _download(args, client, [course])
 
 
 def cmd_todo(args: argparse.Namespace) -> int:
     client = client_for(args)
-    courses = load_courses(client, refresh=args.refresh)
+    courses = catalog(client, refresh=args.refresh)
     if args.curso:
         courses = [course for course in courses if course.matches(args.curso)]
         if not courses:
@@ -718,9 +640,13 @@ def build_parser() -> argparse.ArgumentParser:
     todo.add_argument("--forzar", action="store_true", help="Volver a bajar aunque exista")
     todo.set_defaults(func=cmd_todo)
 
-    cache = sub.add_parser("cache", help="Ver o borrar la cache local")
-    cache.add_argument("--borrar", action="store_true", help="Borrar los archivos de cache")
-    cache.set_defaults(func=cmd_cache)
+    cache_cmd = sub.add_parser("cache", help="Ver o borrar la cache local")
+    cache_cmd.add_argument("--borrar", action="store_true", help="Borrar los archivos de cache")
+    cache_cmd.set_defaults(func=cmd_cache)
+
+    for command in (cursos, curso, horario, recursos, descargar, todo):
+        command.add_argument("--refresh", action="store_true", default=argparse.SUPPRESS,
+                             help="Ignora la cache")  # SUPPRESS: no pisa el --refresh global
 
     return parser
 
