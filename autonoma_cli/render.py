@@ -12,6 +12,12 @@ from .downloader import DownloadItem, human_size
 from .models import ClassSession, Course, Resource, SessionTopic, WEEKDAYS
 
 
+def text(message: object = "", *, stream: Any = None) -> None:
+    """Escribe una linea. Unico punto de salida de texto de los comandos."""
+
+    print(message, file=sys.stdout if stream is None else stream)
+
+
 def emit_json(payload: Any) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 

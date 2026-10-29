@@ -361,17 +361,6 @@ class ClassSession:
             return f"{self.start_time}-{self.end_time}"
         return self.start_time or self.end_time
 
-    @property
-    def starts_at(self) -> datetime | None:
-        day = self.date_value
-        if day is None or not self.start_time:
-            return None
-        try:
-            hour, minute = (int(part) for part in self.start_time.split(":", 1))
-        except ValueError:
-            return None
-        return datetime.combine(day, datetime.min.time()).replace(hour=hour, minute=minute)
-
     def sort_key(self) -> tuple[date, str]:
         return (self.date_value or date.max, self.start_time)
 

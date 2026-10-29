@@ -28,7 +28,7 @@ from .errors import (
     ProtocolError,
     SessionExpiredError,
 )
-from .models import ClassSession, Course, Resource, SessionTopic
+from .models import ClassSession, Course, Resource, SessionTopic, strip_html
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
@@ -36,7 +36,6 @@ PERFIL_ALUMNO = 13
 
 _LOGIN_REDIRECT = re.compile(r"/Campus/Login\.aspx(?:$|[?#])", re.I)
 _FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
-_TAGS = re.compile(r"<[^>]+>")
 
 
 class LoginPageParser(HTMLParser):
@@ -93,10 +92,6 @@ def unwrap(payload: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
-
-
-def _strip_tags(html: str) -> str:
-    return re.sub(r"\s+", " ", _TAGS.sub(" ", html)).strip()
 
 
 def _extract_student_code(html: str) -> str:
@@ -242,7 +237,7 @@ class CampusClient:
 
         if _LOGIN_REDIRECT.search(final_url):
             match = _FAILURE_TEXT.search(body)
-            detail = _strip_tags(match.group(1)) if match else ""
+            detail = strip_html(match.group(1)) if match else ""
             raise AuthenticationError(
                 "El campus rechazo las credenciales."
                 + (f" Mensaje del campus: {detail}" if detail else "")
@@ -463,12 +458,6 @@ class CampusClient:
                 if limit and empty_run >= limit:
                     break
         return result
-
-    def get_all_resources(self, group_id: int | str) -> list[Resource]:
-        resources: list[Resource] = []
-        for _, items in self.iter_session_resources(group_id):
-            resources.extend(items)
-        return resources
 
     def describe(self) -> dict[str, Any]:
         return {

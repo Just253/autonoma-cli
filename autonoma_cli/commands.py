@@ -119,20 +119,20 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
     all_items: list[DownloadItem] = []
 
     for course in courses:
-        print()
+        render.text()
         render.print_course_header(course)
         items = _plan(args, client, course)
         all_items.extend(items)
         if not items:
-            print(ui.yellow("  Sin archivos que coincidan con el filtro."))
+            render.text(ui.yellow("  Sin archivos que coincidan con el filtro."))
 
     if not all_items:
-        print("\nNada que descargar.")
+        render.text("\nNada que descargar.")
         return 0
 
     if args.seco:
-        print()
-        print(ui.table(
+        render.text()
+        render.text(ui.table(
             ["Curso", "Ses.", "Tipo", "Archivo"],
             [
                 [
@@ -145,10 +145,10 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
             ],
             max_widths=[28, 4, 11, 90],
         ))
-        print(f"\n{len(all_items)} archivos · destino {root} (simulacion, nada descargado)")
+        render.text(f"\n{len(all_items)} archivos · destino {root} (simulacion, nada descargado)")
         return 0
 
-    print(f"\nDescargando {len(all_items)} archivos → {root}")
+    render.text(f"\nDescargando {len(all_items)} archivos → {root}")
     stats = run_plan(
         all_items,
         manifest,
@@ -175,13 +175,13 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
 
 
 def report_error(exc: BaseException, prefix: str = "error", *extra: str) -> None:
-    print(ui.red(f"{prefix}: {exc}"), file=sys.stderr)
+    render.text(ui.red(f"{prefix}: {exc}"), stream=sys.stderr)
     for line in extra:
-        print(line, file=sys.stderr)
+        render.text(line, stream=sys.stderr)
 
 
 def report_cancelled() -> None:
-    print("\nCancelado.", file=sys.stderr)
+    render.text("\nCancelado.", stream=sys.stderr)
 
 
 def run_login(client: CampusClient, args: argparse.Namespace) -> int:
@@ -198,36 +198,36 @@ def run_login(client: CampusClient, args: argparse.Namespace) -> int:
     client.authenticate(username, password, force_login=True)
 
     if args.no_guardar:
-        print(ui.yellow("Sesion iniciada, pero no se guardaron las credenciales."))
+        render.text(ui.yellow("Sesion iniciada, pero no se guardaron las credenciales."))
     else:
         stored = config.save_credentials(username, password)
-        print(ui.green("Credenciales guardadas: ") + stored.storage_label)
+        render.text(ui.green("Credenciales guardadas: ") + stored.storage_label)
         active = config.load_credentials()
         if active is not None and active.method == "plain_file":
-            print(ui.yellow(
+            render.text(ui.yellow(
                 f"aviso: {config.plain_credentials_path()} existe y tiene prioridad. "
                 "Editalo o borralo para usar las credenciales cifradas."
             ))
 
     code = client.student_code or "(no detectado)"
-    print(f"Sesion iniciada como {username} · codigo {code}")
-    print(f"Cookie: {config.cookies_path()}")
+    render.text(f"Sesion iniciada como {username} · codigo {code}")
+    render.text(f"Cookie: {config.cookies_path()}")
     client.close()
     return 0
 
 
 def run_logout(client: CampusClient, args: argparse.Namespace) -> int:
     if client.forget_cookies():
-        print(ui.green("Cookie de sesion borrada."))
+        render.text(ui.green("Cookie de sesion borrada."))
     else:
-        print("No habia cookie de sesion guardada.")
+        render.text("No habia cookie de sesion guardada.")
     if args.credenciales:
         removed = config.clear_credentials()
         removed_plain = config.clear_plain_credentials()
         if removed or removed_plain:
-            print(ui.green("Credenciales eliminadas del disco."))
+            render.text(ui.green("Credenciales eliminadas del disco."))
         else:
-            print("No habia credenciales guardadas.")
+            render.text("No habia credenciales guardadas.")
     return 0
 
 
@@ -248,20 +248,20 @@ def run_whoami(client: CampusClient, args: argparse.Namespace) -> int:
         render.emit_json(payload)
         return 0
 
-    print(ui.bold("Cuenta del campus"))
-    print(f"  Usuario:       {payload['username'] or '(no guardado)'}")
-    print(f"  Codigo alumno: {payload['student_code'] or '(no detectado)'}")
-    print(f"  Campus:        {payload['base_url']}")
-    print(f"  Sesion:        activa (cookie en {payload['cookies_file']})")
+    render.text(ui.bold("Cuenta del campus"))
+    render.text(f"  Usuario:       {payload['username'] or '(no guardado)'}")
+    render.text(f"  Codigo alumno: {payload['student_code'] or '(no detectado)'}")
+    render.text(f"  Campus:        {payload['base_url']}")
+    render.text(f"  Sesion:        activa (cookie en {payload['cookies_file']})")
     if credentials:
         label = credentials.get("label") or credentials.get("method", "")
-        print(f"  Credenciales:  {credentials['username'] or '(sin usuario)'} · {label}")
-        print(f"  Archivo:       {credentials['path']}")
+        render.text(f"  Credenciales:  {credentials['username'] or '(sin usuario)'} · {label}")
+        render.text(f"  Archivo:       {credentials['path']}")
         if not credentials.get("complete", True):
-            print(ui.yellow("                 falta usuario o contrasena en ese archivo"))
+            render.text(ui.yellow("                 falta usuario o contrasena en ese archivo"))
     else:
-        print("  Credenciales:  no guardadas (usa `autonoma credenciales` o variables de entorno)")
-    print(f"  Config:        {payload['config_dir']}")
+        render.text("  Credenciales:  no guardadas (usa `autonoma credenciales` o variables de entorno)")
+    render.text(f"  Config:        {payload['config_dir']}")
     return 0
 
 
@@ -271,9 +271,9 @@ def run_credenciales(client: CampusClient | None, args: argparse.Namespace) -> i
     if args.borrar:
         removed = config.clear_plain_credentials()
         if removed:
-            print(ui.green("credentials.txt eliminado."))
+            render.text(ui.green("credentials.txt eliminado."))
         else:
-            print("No existia credentials.txt.")
+            render.text("No existia credentials.txt.")
         return 0
 
     path, created = config.create_plain_credentials_file()
@@ -286,7 +286,7 @@ def run_credenciales(client: CampusClient | None, args: argparse.Namespace) -> i
             else:
                 subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
         except Exception as exc:  # noqa: BLE001 - abrir el editor es opcional
-            print(ui.yellow(f"No se pudo abrir el editor: {exc}"))
+            render.text(ui.yellow(f"No se pudo abrir el editor: {exc}"))
 
     if args.json:
         render.emit_json(
@@ -300,19 +300,19 @@ def run_credenciales(client: CampusClient | None, args: argparse.Namespace) -> i
         )
         return 0
 
-    print(ui.bold("Archivo de credenciales editable"))
-    print(f"  {path}" + (ui.green("  (creado ahora)") if created else "  (ya existia)"))
-    print()
-    print("Completa estas dos lineas y guarda:")
-    print(ui.cyan("  usuario=tu-codigo-de-alumno"))
-    print(ui.cyan("  password=tu-clave"))
-    print()
+    render.text(ui.bold("Archivo de credenciales editable"))
+    render.text(f"  {path}" + (ui.green("  (creado ahora)") if created else "  (ya existia)"))
+    render.text()
+    render.text("Completa estas dos lineas y guarda:")
+    render.text(ui.cyan("  usuario=tu-codigo-de-alumno"))
+    render.text(ui.cyan("  password=tu-clave"))
+    render.text()
     if editable:
-        print(ui.green(f"Ahora mismo carga: {editable.username} (texto plano)"))
+        render.text(ui.green(f"Ahora mismo carga: {editable.username} (texto plano)"))
     else:
-        print(ui.yellow("Todavia falta usuario o contrasena en el archivo."))
-    print(ui.dim("Tiene prioridad sobre las credenciales cifradas de `autonoma login`."))
-    print(ui.dim("Es texto plano: no lo compartas ni lo subas a un repo."))
+        render.text(ui.yellow("Todavia falta usuario o contrasena en el archivo."))
+    render.text(ui.dim("Tiene prioridad sobre las credenciales cifradas de `autonoma login`."))
+    render.text(ui.dim("Es texto plano: no lo compartas ni lo subas a un repo."))
     return 0
 
 
@@ -322,7 +322,7 @@ def run_cursos(client: CampusClient, args: argparse.Namespace) -> int:
         render.emit_json([course.to_dict() for course in courses])
         return 0
 
-    print(ui.bold(f"{len(courses)} cursos · periodo {courses[0].period if courses else '-'}"))
+    render.text(ui.bold(f"{len(courses)} cursos · periodo {courses[0].period if courses else '-'}"))
     rows = [
         [
             index,
@@ -335,15 +335,15 @@ def run_cursos(client: CampusClient, args: argparse.Namespace) -> int:
         ]
         for index, course in enumerate(courses, start=1)
     ]
-    print()
-    print(ui.table(
+    render.text()
+    render.text(ui.table(
         ["#", "Curso", "Codigo", "Grupo", "Ciclo", "Docente", "Rec."],
         rows,
         max_widths=[3, 44, 12, 8, 5, 24, 4],
         aligns=["right", "left", "left", "left", "right", "left", "right"],
     ))
-    print()
-    print(ui.dim(f"Usa el indice o el nGruCodigo: autonoma recursos {courses[0].group_id if courses else 'GRUPO'}"))
+    render.text()
+    render.text(ui.dim(f"Usa el indice o el nGruCodigo: autonoma recursos {courses[0].group_id if courses else 'GRUPO'}"))
     return 0
 
 
@@ -374,13 +374,13 @@ def run_curso(client: CampusClient, args: argparse.Namespace) -> int:
 
     render.print_course_header(course)
     if course.syllabus_url:
-        print(f"  Silabo: {course.syllabus_url}")
+        render.text(f"  Silabo: {course.syllabus_url}")
     if topics:
         render.print_syllabus(topics)
     if active_resources:
-        print(ui.dim(f"\nSesion activa ({active_resources[0].session_label}) · {len(active_resources)} recursos"))
-    print()
-    print(
+        render.text(ui.dim(f"\nSesion activa ({active_resources[0].session_label}) · {len(active_resources)} recursos"))
+    render.text()
+    render.text(
         ui.dim(
             f"Siguiente paso: autonoma horario {course.group_id} "
             f"| autonoma recursos {course.group_id} "
@@ -420,8 +420,8 @@ def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
         return 0
 
     render.print_schedule(entries, start, end)
-    print()
-    print(ui.dim("Opciones: --hoy | --manana | --dia dd/mm/aaaa | --desde/--hasta | --todo"))
+    render.text()
+    render.text(ui.dim("Opciones: --hoy | --manana | --dia dd/mm/aaaa | --desde/--hasta | --todo"))
     return 0
 
 
@@ -441,18 +441,18 @@ def run_recursos(client: CampusClient, args: argparse.Namespace) -> int:
     for session, resources in grouped:
         label = f"Sesion {session:02d}"
         if not resources:
-            print(ui.dim(f"\n{label} · sin recursos"))
+            render.text(ui.dim(f"\n{label} · sin recursos"))
             continue
-        print(f"\n{ui.bold(label)} · {len(resources)} recursos")
-        print(ui.table(
+        render.text(f"\n{ui.bold(label)} · {len(resources)} recursos")
+        render.text(ui.table(
             ["Ses.", "Tipo", "Titulo", "Ext", "Fecha"],
             render.resource_rows(resources),
             max_widths=[4, 11, 60, 5, 10],
         ))
         total += len(resources)
-    print()
-    print(f"Total: {total} recursos en {len([1 for _, items in grouped if items])} sesiones.")
-    print(ui.dim(f"Descargar: autonoma descargar {course.group_id} --tipo archivo"))
+    render.text()
+    render.text(f"Total: {total} recursos en {len([1 for _, items in grouped if items])} sesiones.")
+    render.text(ui.dim(f"Descargar: autonoma descargar {course.group_id} --tipo archivo"))
     return 0
 
 
@@ -482,14 +482,14 @@ def run_cache(client: CampusClient | None, args: argparse.Namespace) -> int:
                 removed += 1
             except OSError:
                 pass
-        print(f"Cache borrada: {removed} archivos en {folder}")
+        render.text(f"Cache borrada: {removed} archivos en {folder}")
         return 0
     if args.json:
         render.emit_json({"dir": str(folder), "files": [file.name for file in files]})
         return 0
-    print(f"Cache: {folder}")
+    render.text(f"Cache: {folder}")
     if not files:
-        print("  (vacia)")
+        render.text("  (vacia)")
     for file in files:
-        print(f"  {file.name} · {human_size(file.stat().st_size)}")
+        render.text(f"  {file.name} · {human_size(file.stat().st_size)}")
     return 0

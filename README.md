@@ -126,8 +126,9 @@ Hora         Curso                                           Aula               
 - `Tipo` distingue `Presencial`, `Sincrona` y `Asincrona`.
 - Solo entran los cursos activos del periodo. Para mirar uno ya terminado,
   nómbralo: `autonoma horario "ejemplo" --todo`.
-- La programación se guarda 6 horas en la caché (`horario.json`); usa
-  `--refresh` para forzarla. `--json` devuelve las mismas sesiones para scripts.
+- La programación se guarda 6 horas en la caché (`cache.json`, junto con los
+  cursos); usa `--refresh` para forzarla. `--json` devuelve las mismas sesiones
+  para scripts.
 
 ### Filtrar recursos
 
@@ -282,10 +283,14 @@ trampas están en [`docs/API.md`](docs/API.md).
 
 ```
 autonoma_cli/
-├── cli.py          # comandos, tablas y salida JSON
+├── cli.py          # parser de argumentos y despacho
+├── commands.py     # run_*: un comando por funcion (client, args)
 ├── client.py       # login ASP.NET, cookies y WebMethods
 ├── models.py       # Course / SessionTopic / ClassSession / Resource normalizados
 ├── downloader.py   # plan, descarga atómica, manifiesto y sha256
+├── cache.py        # caché de cursos y horario en un único cache.json
+├── render.py       # tablas, cabeceras y salida JSON
+├── selectors.py    # filtros de curso, sesión, tipo y fechas
 ├── config.py       # credenciales (DPAPI), cookies, preferencias
 ├── ui.py           # tablas y color
 └── errors.py       # errores tipados

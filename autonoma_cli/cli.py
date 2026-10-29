@@ -4,6 +4,7 @@ Comandos:
   login      guarda credenciales e inicia sesion
   logout     borra la cookie (y opcionalmente las credenciales)
   whoami     muestra la cuenta y el estado de la sesion
+  credenciales  crea o muestra el archivo de credenciales editable a mano
   cursos     lista los cursos del periodo
   curso      detalle de un curso y su silabo
   horario    fechas, horas y aulas de las sesiones
