@@ -28,7 +28,7 @@ from .errors import (
     ProtocolError,
     SessionExpiredError,
 )
-from .models import Course, Resource, SessionTopic
+from .models import ClassSession, Course, Resource, SessionTopic
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
@@ -359,6 +359,13 @@ class CampusClient:
                     return self._call_once(method, payload, page)
                 raise
             except CampusHTTPError as exc:
+                if exc.status_code == 401:
+                    # La cookie vencio sin redirigir al login: el campus responde 401.
+                    self._authenticated = False
+                    if allow_relogin:
+                        self._relogin()
+                        return self._call_once(method, payload, page)
+                    raise SessionExpiredError("La sesion del campus expiro.") from exc
                 if exc.status_code in {500, 502, 503, 504} and attempt < self.retries:
                     last_error = exc
                     time.sleep(1.5 * attempt)
@@ -404,6 +411,15 @@ class CampusClient:
             if isinstance(raw, list):
                 topics = raw
         return [SessionTopic.from_api(item) for item in topics if isinstance(item, Mapping)]
+
+    def get_schedule(self, group_id: int | str, *, course: str = "") -> list[ClassSession]:
+        """Programacion del grupo: fechas, horarios y aula de cada sesion."""
+
+        data = self._call("getProgramacionAlumnoGrupo", {"nGruCodigo": group_id})
+        return [
+            ClassSession.from_api(item, group_id=group_id, course=course)
+            for item in _as_records(data)
+        ]
 
     def get_session_resources(self, group_id: int | str, session: int) -> list[Resource]:
         data = self.get_course_detail(group_id, session)

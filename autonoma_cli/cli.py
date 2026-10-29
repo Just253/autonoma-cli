@@ -6,6 +6,7 @@ Comandos:
   whoami     muestra la cuenta y el estado de la sesion
   cursos     lista los cursos del periodo
   curso      detalle de un curso y su silabo
+  horario    fechas, horas y aulas de las sesiones
   recursos   lista los recursos de un curso (por sesion)
   descargar  baja los archivos de un curso
   todo       baja los archivos de todos los cursos
@@ -15,6 +16,7 @@ Comandos:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import getpass
 import json
 import os
@@ -35,7 +37,7 @@ from .downloader import (
     run_plan,
 )
 from .errors import AuthenticationError, AutonomaError, CampusError, UsageError
-from .models import Course, Resource, SessionTopic
+from .models import ClassSession, Course, Resource, SessionTopic, WEEKDAYS, parse_date
 from . import ui
 
 KIND_FILTERS: dict[str, set[int] | None] = {
@@ -48,6 +50,7 @@ KIND_FILTERS: dict[str, set[int] | None] = {
 }
 
 COURSE_CACHE_TTL = 6 * 3600
+SCHEDULE_CACHE_TTL = 6 * 3600
 
 
 # --------------------------------------------------------------------------- #
@@ -129,6 +132,111 @@ def load_courses(client: CampusClient, *, refresh: bool = False) -> list[Course]
     return courses
 
 
+def schedule_cache_path() -> Path:
+    return config.cache_dir() / "horario.json"
+
+
+def _read_schedule_cache(path: Path) -> dict[str, Any]:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+    return document if isinstance(document, dict) else {}
+
+
+def load_schedule(
+    client: CampusClient,
+    courses: Sequence[Course],
+    *,
+    refresh: bool = False,
+) -> list[ClassSession]:
+    """Programacion de todos los cursos, con cache de 6 horas por grupo."""
+
+    path = schedule_cache_path()
+    document = {} if refresh else _read_schedule_cache(path)
+    cached = document.get("items") if document.get("base_url") == client.base_url else None
+    items: dict[str, Any] = dict(cached) if isinstance(cached, dict) else {}
+    now = time.time()
+    dirty = False
+    entries: list[ClassSession] = []
+
+    for course in courses:
+        key = str(course.group_id)
+        record = items.get(key)
+        fresh = (
+            isinstance(record, dict)
+            and now - float(record.get("fetched_at") or 0) < SCHEDULE_CACHE_TTL
+            and isinstance(record.get("records"), list)
+        )
+        if fresh:
+            entries.extend(
+                ClassSession.from_api(item, group_id=course.group_id, course=course.name)
+                for item in record["records"]
+                if isinstance(item, dict)
+            )
+            continue
+        fetched = client.get_schedule(course.group_id, course=course.name)
+        entries.extend(fetched)
+        items[key] = {
+            "fetched_at": now,
+            "course": course.name,
+            "records": [entry.raw for entry in fetched],
+        }
+        dirty = True
+
+    if dirty or not path.exists():
+        try:
+            config.write_private_text(
+                path,
+                json.dumps(
+                    {"fetched_at": now, "base_url": client.base_url, "items": items},
+                    ensure_ascii=False,
+                ),
+            )
+        except OSError:
+            pass
+    return entries
+
+
+def parse_day(text: str) -> dt.date:
+    """Acepta una fecha (dd/mm/aaaa) o ``hoy`` / ``manana`` / ``ayer``."""
+
+    cleaned = (text or "").strip().lower()
+    today = dt.date.today()
+    if cleaned in {"hoy", "today"}:
+        return today
+    if cleaned in {"manana", "mañana", "tomorrow"}:
+        return today + dt.timedelta(days=1)
+    if cleaned in {"ayer", "yesterday"}:
+        return today - dt.timedelta(days=1)
+    day = parse_date(cleaned)
+    if day is None:
+        raise UsageError(f"Fecha no valida: {text!r}. Usa dd/mm/aaaa (o hoy, manana, ayer).")
+    return day
+
+
+def schedule_range(args: argparse.Namespace) -> tuple[dt.date | None, dt.date | None]:
+    """Rango pedido en la linea de comandos; ``(None, None)`` = todo el periodo."""
+
+    today = dt.date.today()
+    if args.todo:
+        return None, None
+    if args.hoy:
+        return today, today
+    if args.manana:
+        tomorrow = today + dt.timedelta(days=1)
+        return tomorrow, tomorrow
+    if args.dia:
+        day = parse_day(args.dia)
+        return day, day
+
+    start = parse_day(args.desde) if args.desde else today
+    end = parse_day(args.hasta) if args.hasta else start + dt.timedelta(days=6)
+    if end < start:
+        raise UsageError("--hasta no puede ser anterior a --desde.")
+    return start, end
+
+
 def resolve_course(courses: Sequence[Course], token: str) -> Course:
     """Acepta indice (1..N), nGruCodigo o texto libre."""
 
@@ -203,6 +311,71 @@ def print_syllabus(topics: Sequence[SessionTopic]) -> None:
         )
     print()
     print(ui.table(["Ses.", "Semana", "Tema", "Act."], rows, max_widths=[5, 23, 70, 4]))
+
+
+def session_count(count: int) -> str:
+    return f"{count} sesion" if count == 1 else f"{count} sesiones"
+
+
+def print_schedule(
+    entries: Sequence[ClassSession],
+    start: dt.date | None,
+    end: dt.date | None,
+) -> None:
+    today = dt.date.today()
+    if start is None or end is None:
+        heading = f"Horario completo · {session_count(len(entries))}"
+    elif start == end:
+        label = "Hoy" if start == today else WEEKDAYS[start.weekday()].capitalize()
+        heading = f"{label}, {start:%d/%m/%Y}"
+        if entries:
+            heading += f" · {session_count(len(entries))}"
+    else:
+        heading = f"Del {start:%d/%m/%Y} al {end:%d/%m/%Y} · {session_count(len(entries))}"
+    print(ui.bold(heading))
+
+    if not entries:
+        where = "para esa fecha" if start == end else "en ese rango"
+        if start is None or end is None:
+            where = "en el periodo"
+        print(ui.yellow(f"Sin clases {where}."))
+        return
+
+    grouped: list[tuple[dt.date, list[ClassSession]]] = []
+    for entry in entries:
+        day = entry.date_value
+        if day is None:
+            continue
+        if grouped and grouped[-1][0] == day:
+            grouped[-1][1].append(entry)
+        else:
+            grouped.append((day, [entry]))
+
+    for day, items in grouped:
+        print()
+        print(ui.bold(f"{WEEKDAYS[day.weekday()].capitalize()} {day:%d/%m/%Y}"))
+        rows = [
+            [
+                entry.time_range or "-",
+                entry.course,
+                entry.room or "-",
+                entry.kind or "-",
+                entry.label,
+            ]
+            for entry in items
+        ]
+        print(
+            ui.table(
+                ["Hora", "Curso", "Aula", "Tipo", "Ses."],
+                rows,
+                max_widths=[13, 46, 32, 12, 4],
+            )
+        )
+
+    if start is not None and start == end:
+        print()
+        for entry in entries:
+            print(ui.dim(f"  {entry.label} · {entry.title[:96]}"))
 
 
 def resource_rows(resources: Sequence[Resource]) -> list[list[str]]:
@@ -457,10 +630,47 @@ def cmd_curso(args: argparse.Namespace) -> int:
     print()
     print(
         ui.dim(
-            f"Siguiente paso: autonoma recursos {course.group_id} "
+            f"Siguiente paso: autonoma horario {course.group_id} "
+            f"| autonoma recursos {course.group_id} "
             f"| autonoma descargar {course.group_id}"
         )
     )
+    return 0
+
+
+def cmd_horario(args: argparse.Namespace) -> int:
+    client = client_for(args)
+    courses = load_courses(client)
+    if args.curso:
+        courses = [resolve_course(courses, args.curso)]
+    else:
+        active = [course for course in courses if course.state == "activo"]
+        courses = active or courses
+    entries = load_schedule(client, courses, refresh=args.refresh)
+
+    start, end = schedule_range(args)
+    if start is not None and end is not None:
+        entries = [
+            entry
+            for entry in entries
+            if entry.date_value is not None and start <= entry.date_value <= end
+        ]
+    entries.sort(key=lambda entry: entry.sort_key())
+
+    if args.json:
+        emit_json(
+            {
+                "from": start.isoformat() if start else None,
+                "to": end.isoformat() if end else None,
+                "count": len(entries),
+                "sessions": [entry.to_dict() for entry in entries],
+            }
+        )
+        return 0
+
+    print_schedule(entries, start, end)
+    print()
+    print(ui.dim("Opciones: --hoy | --manana | --dia dd/mm/aaaa | --desde/--hasta | --todo"))
     return 0
 
 
@@ -682,6 +892,21 @@ def build_parser() -> argparse.ArgumentParser:
     curso = sub.add_parser("curso", help="Detalle y silabo de un curso")
     curso.add_argument("curso", help="Indice, nGruCodigo o parte del nombre")
     curso.set_defaults(func=cmd_curso)
+
+    horario = sub.add_parser("horario", help="Horario de clases y aulas", aliases=["aula"])
+    horario.add_argument(
+        "curso",
+        nargs="?",
+        help="Limitar a un curso (indice, nGruCodigo o parte del nombre)",
+    )
+    rango = horario.add_mutually_exclusive_group()
+    rango.add_argument("--hoy", action="store_true", help="Solo las clases de hoy")
+    rango.add_argument("--manana", action="store_true", help="Solo las clases de manana")
+    rango.add_argument("--dia", help="Un dia concreto (dd/mm/aaaa)")
+    rango.add_argument("--todo", action="store_true", help="Todo el periodo")
+    horario.add_argument("--desde", help="Desde esta fecha (dd/mm/aaaa)")
+    horario.add_argument("--hasta", help="Hasta esta fecha (dd/mm/aaaa)")
+    horario.set_defaults(func=cmd_horario)
 
     recursos = sub.add_parser("recursos", help="Listar recursos de un curso")
     recursos.add_argument("curso", help="Indice, nGruCodigo o parte del nombre")

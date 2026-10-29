@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from typing import Any, Mapping
 from urllib.parse import quote, urljoin, urlparse
 
@@ -35,6 +36,23 @@ ITINERARY: dict[int, str] = {
     3: "INTEGRA",
 }
 
+# nTipo de la programacion -> modalidad visible
+CLASS_KINDS: dict[int, str] = {
+    0: "Sincrona",
+    1: "Asincrona",
+    2: "Presencial",
+}
+
+WEEKDAYS: tuple[str, ...] = (
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+)
+
 # Icono FontAwesome del campus -> extension probable
 EXTENSION_BY_ICON: dict[str, str] = {
     "fa-file-pdf": ".pdf",
@@ -53,6 +71,8 @@ EXTENSION_BY_ICON: dict[str, str] = {
 
 _INVALID_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _SPACES = re.compile(r"\s+")
+_TIME_RANGE = re.compile(r"(\d{1,2}:\d{2})\s*(?:a|al|hasta|–|-)\s*(\d{1,2}:\d{2})", re.I)
+
 _ACCENTS = str.maketrans("áéíóúÁÉÍÓÚñÑüÜ", "aeiouAEIOUnNuU")
 
 
@@ -60,6 +80,47 @@ def clean_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def strip_html(value: Any) -> str:
+    """Quita etiquetas y espacios sobrantes (el campus manda HTML en ``tipo``)."""
+
+    return re.sub(r"\s+", " ", _TAGS.sub(" ", clean_text(value))).strip()
+
+
+_DATE_FORMATS = ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d")
+
+
+def parse_date(value: Any) -> date | None:
+    """Interpreta ``dd/mm/aaaa``, ``dd-mm-aaaa`` o ``aaaa-mm-dd``."""
+
+    text = clean_text(value)
+    if not text:
+        return None
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def date_from_millis(value: Any) -> date | None:
+    """Respaldo de ``fechaParse``: milisegundos desde epoch, en UTC."""
+
+    try:
+        millis = float(value)
+    except (TypeError, ValueError):
+        return None
+    if millis <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).date()
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def kind_name(kind: Any) -> str:
@@ -264,6 +325,115 @@ class SessionTopic:
             "topic": self.topic,
             "goal": self.goal,
             "active": self.active,
+        }
+
+
+@dataclass(frozen=True)
+class ClassSession:
+    """Una sesion programada: cuando, en que aula y de que curso."""
+
+    group_id: int | str
+    course: str
+    number: int
+    label: str
+    topic: str
+    date: str
+    start_time: str
+    end_time: str
+    kind: str
+    room: str
+    code: int | str
+    recorded: bool
+    raw: Mapping[str, Any] = field(default=None, repr=False, compare=False)  # type: ignore[assignment]
+
+    @property
+    def title(self) -> str:
+        first_line = (self.topic or "").splitlines()[0].strip()
+        return first_line or f"Sesion {self.number:02d}"
+
+    @property
+    def date_value(self) -> date | None:
+        return parse_date(self.date) or date_from_millis((self.raw or {}).get("fechaParse"))
+
+    @property
+    def time_range(self) -> str:
+        if self.start_time and self.end_time:
+            return f"{self.start_time}-{self.end_time}"
+        return self.start_time or self.end_time
+
+    @property
+    def starts_at(self) -> datetime | None:
+        day = self.date_value
+        if day is None or not self.start_time:
+            return None
+        try:
+            hour, minute = (int(part) for part in self.start_time.split(":", 1))
+        except ValueError:
+            return None
+        return datetime.combine(day, datetime.min.time()).replace(hour=hour, minute=minute)
+
+    def sort_key(self) -> tuple[date, str]:
+        return (self.date_value or date.max, self.start_time)
+
+    @classmethod
+    def from_api(
+        cls,
+        data: Mapping[str, Any],
+        *,
+        group_id: int | str = "",
+        course: str = "",
+    ) -> "ClassSession":
+        raw_date = clean_text(data.get("fecha"))
+        day = parse_date(raw_date.split(" ")[0]) if raw_date else None
+        if day is None:
+            day = date_from_millis(data.get("fechaParse"))
+        match = _TIME_RANGE.search(raw_date)
+        start_time = match.group(1).zfill(5) if match else ""
+        end_time = match.group(2).zfill(5) if match else ""
+        try:
+            number = int(clean_text(data.get("nSesion") or data.get("sesion")) or 0)
+        except ValueError:
+            number = 0
+        kind = strip_html(data.get("tipo"))
+        if not kind:
+            try:
+                kind = CLASS_KINDS.get(int(clean_text(data.get("nTipo")) or -1), "")
+            except ValueError:
+                kind = ""
+        return cls(
+            group_id=data.get("nGruCodigo") or group_id,
+            course=clean_text(data.get("asignatura")) or course,
+            number=number,
+            label=clean_text(data.get("cSesion")) or f"{number:02d}",
+            topic=clean_text(data.get("tema")),
+            date=day.strftime("%d/%m/%Y") if day else raw_date.split(" ")[0],
+            start_time=start_time,
+            end_time=end_time,
+            kind=kind,
+            room=clean_text(data.get("ambiente")),
+            code=data.get("nHorCodigo") or "",
+            recorded=clean_text(data.get("nGrabacion")) == "1",
+            raw=data,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        day = self.date_value
+        return {
+            "group_id": self.group_id,
+            "course": self.course,
+            "session": self.number,
+            "session_label": self.label,
+            "topic": self.topic,
+            "date": day.isoformat() if day else self.date,
+            "weekday": day.isoweekday() if day else None,
+            "weekday_name": WEEKDAYS[day.weekday()] if day else None,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "time_range": self.time_range,
+            "kind": self.kind,
+            "room": self.room,
+            "code": self.code,
+            "recorded": self.recorded,
         }
 
 

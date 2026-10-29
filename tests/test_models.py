@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date
 
 from autonoma_cli.models import (
+    ClassSession,
     Course,
     Resource,
     SessionTopic,
     extension_from,
     kind_name,
+    parse_date,
     resolve_upload_url,
     safe_filename,
     slugify,
@@ -151,6 +154,62 @@ class SessionTopicTests(unittest.TestCase):
         self.assertEqual(topic.number, 4)
         self.assertTrue(topic.active)
         self.assertEqual(topic.title, "Evaluacion de Conocimientos (EC): Tema de ejemplo")
+
+
+class ClassSessionTests(unittest.TestCase):
+    RECORD = {
+        "nAsignado": 0,
+        "nSesion": 8,
+        "sesion": 8,
+        "tema": "Tema de ejemplo de la sesion.\nValor: Ejemplo",
+        "fecha": "15/03/2099 19:30 a 22:30",
+        "fechaParse": 4077286200000,
+        "nHorCodigo": 12345678,
+        "tipo": '<span class="badge bg-label-secondary">Presencial</span>',
+        "nTipo": 2,
+        "nTipoOrden": 1,
+        "ambiente": "A-101 (Laboratorio de Ejemplo)",
+        "nGrabacion": 0,
+    }
+
+    def test_from_api_reads_room_and_times(self) -> None:
+        entry = ClassSession.from_api(self.RECORD, group_id=90000001, course="XR")
+        self.assertEqual(entry.room, "A-101 (Laboratorio de Ejemplo)")
+        self.assertEqual(entry.kind, "Presencial")
+        self.assertEqual(entry.time_range, "19:30-22:30")
+        self.assertEqual(entry.date, "15/03/2099")
+        self.assertEqual(entry.date_value, date(2099, 3, 15))
+        self.assertEqual(entry.number, 8)
+        self.assertEqual(entry.label, "08")
+        self.assertEqual(entry.group_id, 90000001)
+        self.assertFalse(entry.recorded)
+
+    def test_title_uses_first_line(self) -> None:
+        entry = ClassSession.from_api(self.RECORD)
+        self.assertEqual(entry.title, "Evaluacion Parcial (EP): Presentacion de prototipo XR.")
+
+    def test_date_falls_back_to_millis(self) -> None:
+        record = dict(self.RECORD, fecha="")
+        entry = ClassSession.from_api(record)
+        self.assertEqual(entry.date_value, date(2099, 3, 15))
+
+    def test_missing_room_and_kind(self) -> None:
+        entry = ClassSession.from_api({"nSesion": 1, "nTipo": 0, "tema": "X"})
+        self.assertEqual(entry.room, "")
+        self.assertEqual(entry.kind, "Sincrona")
+        self.assertEqual(entry.time_range, "")
+
+    def test_to_dict(self) -> None:
+        payload = ClassSession.from_api(self.RECORD, group_id=1, course="XR").to_dict()
+        self.assertEqual(payload["date"], "2099-03-15")
+        self.assertEqual(payload["room"], "A-101 (Laboratorio de Ejemplo)")
+        self.assertEqual(payload["start_time"], "19:30")
+
+    def test_parse_date(self) -> None:
+        self.assertEqual(parse_date("15/03/2099"), date(2099, 3, 15))
+        self.assertEqual(parse_date("2099-03-15"), date(2099, 3, 15))
+        self.assertIsNone(parse_date(""))
+        self.assertIsNone(parse_date("27/13/2026"))
 
 
 if __name__ == "__main__":

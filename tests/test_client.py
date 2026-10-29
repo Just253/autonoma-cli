@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import unittest
 
-from autonoma_cli.client import LoginPageParser, _as_records, _extract_student_code, unwrap
+from autonoma_cli.client import (
+    CampusClient,
+    LoginPageParser,
+    _as_records,
+    _extract_student_code,
+    unwrap,
+)
+from autonoma_cli.errors import CampusHTTPError
 
 LOGIN_HTML = """
 <form name="frmLogin" method="post" action="./Login.aspx" id="frmLogin">
@@ -81,6 +88,45 @@ class RecordTests(unittest.TestCase):
 
     def test_unknown_shape(self) -> None:
         self.assertEqual(_as_records("texto"), [])
+
+
+class SessionRetryTests(unittest.TestCase):
+    def test_http_401_relogs_in_and_retries(self) -> None:
+        client = CampusClient(delay=0)
+        client._authenticated = True
+        calls: list[str] = []
+        relogins: list[bool] = []
+
+        def fake_relogin() -> None:
+            relogins.append(True)
+            client._authenticated = True
+
+        def fake_once(method: str, payload: object, page: str) -> dict[str, bool]:
+            calls.append(method)
+            if len(calls) == 1:
+                raise CampusHTTPError("El campus respondio HTTP 401.", 401)
+            return {"ok": True}
+
+        client._relogin = fake_relogin  # type: ignore[method-assign]
+        client._call_once = fake_once  # type: ignore[method-assign]
+
+        self.assertEqual(client._call("Alu_ObtenerCursosActuales", {}), {"ok": True})
+        self.assertEqual(len(relogins), 1)
+        self.assertEqual(len(calls), 2)
+
+    def test_http_500_is_retried(self) -> None:
+        client = CampusClient(delay=0, retries=2)
+        client._authenticated = True
+        calls: list[int] = []
+
+        def fake_once(method: str, payload: object, page: str) -> dict[str, bool]:
+            calls.append(1)
+            raise CampusHTTPError("El campus respondio HTTP 500.", 500)
+
+        client._call_once = fake_once  # type: ignore[method-assign]
+        with self.assertRaises(CampusHTTPError):
+            client._call("Alu_ObtenerCursosActuales", {})
+        self.assertEqual(len(calls), 2)
 
 
 if __name__ == "__main__":

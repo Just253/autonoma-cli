@@ -55,7 +55,7 @@ decodificar otra vez.
 | `Alu_ObtenerCursosActuales` | `{}` | lista de cursos |
 | `getInformationDetailCurso` | `{nGruCodigo, nSesion, nPerfil: 13}` | ver abajo |
 | `getNotasAlumnoGrupo` | `{nGruCodigo}` | notas del curso |
-| `getProgramacionAlumnoGrupo` | `{nGruCodigo}` | horario |
+| `getProgramacionAlumnoGrupo` | `{nGruCodigo}` | horario: fechas, horas y aula |
 
 `nPerfil: 13` es el perfil de alumno; el campus lo calcula con
 `CampVirtSecurity.getPerfil()` y en estudiantes siempre es 13.
@@ -78,6 +78,38 @@ decodificar otra vez.
   "sesion_activa": 0
 }
 ```
+
+### `getProgramacionAlumnoGrupo`
+
+Devuelve una lista con una entrada por sesión programada:
+
+```json
+{
+  "nSesion": 8, "sesion": 8,
+  "tema": "Tema de ejemplo de la sesión…",
+  "fecha": "15/03/2099 19:30 a 22:30",
+  "fechaParse": 4077286200000,
+  "nHorCodigo": 12345678,
+  "tipo": "<span class=\"badge bg-label-secondary\">Presencial</span>",
+  "nTipo": 2,
+  "ambiente": "A-101 (Laboratorio de Ejemplo)",
+  "nGrabacion": 0
+}
+```
+
+| Campo | Uso |
+|-------|-----|
+| `tema` | tema de la sesión (multilínea: la primera línea es el título) |
+| `fecha` | fecha y rango horario en texto: `dd/mm/aaaa HH:MM a HH:MM` |
+| `fechaParse` | la fecha en milisegundos epoch (UTC), como respaldo |
+| `nTipo` | `0` síncrona, `1` asíncrona, `2` presencial |
+| `tipo` | el mismo dato como HTML con `badge`; hay que quitar las etiquetas |
+| `ambiente` | **aula** (`A-101 (Laboratorio de Ejemplo)`) o `Sala zoom` |
+| `nGrabacion` | `1` si la sesión quedó grabada |
+| `nHorCodigo` | identificador del bloque de horario |
+
+La respuesta no trae el curso: hay que pedirla por `nGruCodigo`. Algunas
+sesiones aparecen repetidas o faltan (huecos de la programación del campus).
 
 ## 3. Campos de un curso
 

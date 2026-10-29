@@ -6,6 +6,7 @@ dependencias externas: solo Python.
 
 - Lista tus cursos del periodo con docente, grupo, ciclo y cantidad de recursos.
 - Muestra el sílabo de cada curso (sesiones, semanas, temas y logros).
+- Muestra el horario de cada sesión: fecha, hora, modalidad y **aula**.
 - Lista los recursos de cada sesión (archivos, tareas, evaluaciones, foros, SCORM).
 - Descarga los archivos a una estructura ordenada por curso y sesión, con
   reanudación por manifiesto y verificación sha256.
@@ -76,6 +77,7 @@ autonoma cursos
 | `autonoma credenciales` | Crea el archivo `credentials.txt` para editar usuario y contraseña a mano. |
 | `autonoma cursos` | Lista los cursos del periodo (alias `ls`). |
 | `autonoma curso CURSO` | Detalle del curso y su sílabo sesión por sesión. |
+| `autonoma horario` | Horario de clases con fecha, hora y aula (alias `aula`). |
 | `autonoma recursos CURSO` | Recursos de todas las sesiones (o de `--sesion N`). |
 | `autonoma descargar CURSO` | Descarga los archivos del curso. |
 | `autonoma todo` | Descarga los archivos de todos los cursos. |
@@ -89,6 +91,43 @@ autonoma recursos 1
 autonoma curso 90000001
 autonoma descargar ejemplo
 ```
+
+### Horario y aulas
+
+```powershell
+# Qué clase y en qué aula te toca hoy
+autonoma horario --hoy
+
+# Próximos 7 días (sin opciones)
+autonoma horario
+
+# Un día concreto, un rango o todo el periodo
+autonoma horario --dia 15/03/2099
+autonoma horario --desde 01/11/2026 --hasta 15/11/2026
+autonoma horario --todo
+
+# Solo un curso (índice, nGruCodigo o parte del nombre)
+autonoma horario ejemplo --todo
+```
+
+```
+Hoy, 15/03/2099 · 1 sesion
+
+Martes 15/03/2099
+Hora         Curso                                           Aula                            Tipo        Ses.
+-----------  ----------------------------------------------  ------------------------------  ----------  ----
+19:30-22:30  CURSO DE EJEMPLO UNO  A-101 (Laboratorio de Ejemplo)  Presencial  08
+
+  08 · Tema de ejemplo de la sesion.
+```
+
+- `Aula` es el campo `ambiente` del campus: el aula física o `Sala zoom` en
+  las sesiones virtuales.
+- `Tipo` distingue `Presencial`, `Sincrona` y `Asincrona`.
+- Solo entran los cursos activos del periodo. Para mirar uno ya terminado,
+  nómbralo: `autonoma horario "ejemplo" --todo`.
+- La programación se guarda 6 horas en la caché (`horario.json`); usa
+  `--refresh` para forzarla. `--json` devuelve las mismas sesiones para scripts.
 
 ### Filtrar recursos
 
@@ -245,7 +284,7 @@ trampas están en [`docs/API.md`](docs/API.md).
 autonoma_cli/
 ├── cli.py          # comandos, tablas y salida JSON
 ├── client.py       # login ASP.NET, cookies y WebMethods
-├── models.py       # Course / SessionTopic / Resource normalizados
+├── models.py       # Course / SessionTopic / ClassSession / Resource normalizados
 ├── downloader.py   # plan, descarga atómica, manifiesto y sha256
 ├── config.py       # credenciales (DPAPI), cookies, preferencias
 ├── ui.py           # tablas y color
