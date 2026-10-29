@@ -13,9 +13,9 @@ from unittest import mock
 from autonoma_cli import ui
 from autonoma_cli.cli import (
     build_parser,
-    cmd_horario,
     main,
 )
+from autonoma_cli.commands import run_horario
 from autonoma_cli.selectors import (
     kind_filter,
     parse_day,
@@ -174,7 +174,7 @@ class ScheduleRangeTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# cmd_horario de punta a punta (sin red)
+# run_horario de punta a punta (sin red)
 # --------------------------------------------------------------------------- #
 
 # Registros crudos tal como los devuelve getProgramacionAlumnoGrupo.
@@ -227,7 +227,7 @@ SCHEDULE_RECORDS: dict[str, list[dict[str, object]]] = {
 
 
 class FakeCampusClient:
-    """Cliente de mentira: mismas firmas que usa cmd_horario, sin red."""
+    """Cliente de mentira: mismas firmas que usa run_horario, sin red."""
 
     base_url = BASE
     student_code = "2024000001"
@@ -285,14 +285,11 @@ class HorarioCommandTests(IsolatedHomeMixin, unittest.TestCase):
         self.make_home()
         ui.configure_color(False)
         self.client = FakeCampusClient()
-        patcher = mock.patch("autonoma_cli.cli.client_for", return_value=self.client)
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def run_horario(self, **overrides: object) -> tuple[int, str]:
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
-            code = cmd_horario(horario_args(**overrides))
+            code = run_horario(self.client, horario_args(**overrides))
         return code, output.getvalue()
 
     def test_range_prints_only_sessions_inside_it(self) -> None:
@@ -361,7 +358,7 @@ class MainExitCodeTests(IsolatedHomeMixin, unittest.TestCase):
         """whoami toca client_for como primera instruccion: ahi inyectamos el error."""
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch("autonoma_cli.cli.client_for", side_effect=error), \
+        with mock.patch("autonoma_cli.commands.client_for", side_effect=error), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = main(["whoami"])
         return code, out.getvalue(), err.getvalue()

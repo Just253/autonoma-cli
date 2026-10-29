@@ -13,7 +13,8 @@ from unittest.mock import patch
 
 from autonoma_cli import cache, config
 from autonoma_cli.cache import Cache
-from autonoma_cli.cli import catalog, main, schedule
+from autonoma_cli.cli import main
+from autonoma_cli.commands import catalog, schedule
 from autonoma_cli.models import ClassSession, Course
 
 BASE = "https://virtual.autonoma.edu.pe"
@@ -375,7 +376,7 @@ class RefreshCoursesBugTests(CacheTestCase):
     def setUp(self) -> None:
         super().setUp()
         self.client = FakeClient()
-        patcher = mock.patch("autonoma_cli.cli.client_for", return_value=self.client)
+        patcher = mock.patch("autonoma_cli.commands.client_for", return_value=self.client)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.out = Path(self._tmp.name) / "descargas"
