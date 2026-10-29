@@ -16,7 +16,6 @@ Comandos:
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import getpass
 import json
 import os
@@ -27,7 +26,7 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
-from . import __version__, config
+from . import __version__, config, render, selectors
 from .client import CampusClient
 from .downloader import (
     Manifest,
@@ -37,17 +36,8 @@ from .downloader import (
     run_plan,
 )
 from .errors import AuthenticationError, AutonomaError, CampusError, UsageError
-from .models import ClassSession, Course, Resource, SessionTopic, WEEKDAYS, parse_date
+from .models import ClassSession, Course, Resource
 from . import ui
-
-KIND_FILTERS: dict[str, set[int] | None] = {
-    "archivo": {2},
-    "tarea": {4},
-    "evaluacion": {5},
-    "foro": {7},
-    "scorm": {10},
-    "todo": None,
-}
 
 COURSE_CACHE_TTL = 6 * 3600
 SCHEDULE_CACHE_TTL = 6 * 3600
@@ -56,10 +46,6 @@ SCHEDULE_CACHE_TTL = 6 * 3600
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-
-
-def emit_json(payload: Any) -> None:
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 def client_for(args: argparse.Namespace, *, authenticate: bool = True) -> CampusClient:
@@ -198,221 +184,6 @@ def load_schedule(
     return entries
 
 
-def parse_day(text: str) -> dt.date:
-    """Acepta una fecha (dd/mm/aaaa) o ``hoy`` / ``manana`` / ``ayer``."""
-
-    cleaned = (text or "").strip().lower()
-    today = dt.date.today()
-    if cleaned in {"hoy", "today"}:
-        return today
-    if cleaned in {"manana", "mañana", "tomorrow"}:
-        return today + dt.timedelta(days=1)
-    if cleaned in {"ayer", "yesterday"}:
-        return today - dt.timedelta(days=1)
-    day = parse_date(cleaned)
-    if day is None:
-        raise UsageError(f"Fecha no valida: {text!r}. Usa dd/mm/aaaa (o hoy, manana, ayer).")
-    return day
-
-
-def schedule_range(args: argparse.Namespace) -> tuple[dt.date | None, dt.date | None]:
-    """Rango pedido en la linea de comandos; ``(None, None)`` = todo el periodo."""
-
-    today = dt.date.today()
-    if args.todo:
-        return None, None
-    if args.hoy:
-        return today, today
-    if args.manana:
-        tomorrow = today + dt.timedelta(days=1)
-        return tomorrow, tomorrow
-    if args.dia:
-        day = parse_day(args.dia)
-        return day, day
-
-    start = parse_day(args.desde) if args.desde else today
-    end = parse_day(args.hasta) if args.hasta else start + dt.timedelta(days=6)
-    if end < start:
-        raise UsageError("--hasta no puede ser anterior a --desde.")
-    return start, end
-
-
-def resolve_course(courses: Sequence[Course], token: str) -> Course:
-    """Acepta indice (1..N), nGruCodigo o texto libre."""
-
-    token = (token or "").strip()
-    if not token:
-        raise UsageError("Indica un curso: indice, nGruCodigo o parte del nombre.")
-    if token.isdigit():
-        number = int(token)
-        for course in courses:
-            if str(course.group_id) == token:
-                return course
-        if 1 <= number <= len(courses):
-            return courses[number - 1]
-    matches = [course for course in courses if course.matches(token)]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise UsageError(f"No hay ningun curso que coincida con {token!r}.")
-    listing = "\n".join(f"  - {course.name} ({course.group_id})" for course in matches)
-    raise UsageError(f"Varios cursos coinciden con {token!r}:\n{listing}")
-
-
-def kind_filter(name: str) -> set[int] | None:
-    try:
-        return KIND_FILTERS[name]
-    except KeyError as exc:
-        raise UsageError(f"Tipo desconocido: {name}") from exc
-
-
-def parse_sessions(values: Sequence[int] | None, maximum: int | None = None) -> list[int] | None:
-    if not values:
-        return None
-    sessions: list[int] = []
-    for value in values:
-        if maximum is not None and not 1 <= value <= maximum:
-            raise UsageError(f"La sesion {value} no existe en este curso (1..{maximum}).")
-        if value not in sessions:
-            sessions.append(value)
-    return sessions
-
-
-def print_course_header(course: Course) -> None:
-    print(ui.bold(course.name))
-    details = [
-        f"{course.code}" if course.code else "",
-        f"periodo {course.period}" if course.period else "",
-        f"ciclo {course.cycle}" if course.cycle else "",
-        f"grupo {course.group}",
-        f"{course.credits} creditos" if course.credits else "",
-        course.modality,
-    ]
-    print("  " + " · ".join(part for part in details if part))
-    if course.teacher:
-        contact = f" <{course.teacher_email}>" if course.teacher_email else ""
-        print(f"  Docente: {course.teacher}{contact}")
-    if course.start_date or course.end_date:
-        print(f"  Periodo de clases: {course.start_date} → {course.end_date}")
-    print(f"  nGruCodigo: {course.group_id} · recursos: {course.resources_count}")
-
-
-def print_syllabus(topics: Sequence[SessionTopic]) -> None:
-    rows = []
-    for topic in topics:
-        first_line = (topic.topic or "").splitlines()[0]
-        rows.append(
-            [
-                topic.label,
-                f"{topic.start_date} - {topic.end_date}",
-                first_line[:70],
-                "*" if topic.active else "",
-            ]
-        )
-    print()
-    print(ui.table(["Ses.", "Semana", "Tema", "Act."], rows, max_widths=[5, 23, 70, 4]))
-
-
-def session_count(count: int) -> str:
-    return f"{count} sesion" if count == 1 else f"{count} sesiones"
-
-
-def print_schedule(
-    entries: Sequence[ClassSession],
-    start: dt.date | None,
-    end: dt.date | None,
-) -> None:
-    today = dt.date.today()
-    if start is None or end is None:
-        heading = f"Horario completo · {session_count(len(entries))}"
-    elif start == end:
-        label = "Hoy" if start == today else WEEKDAYS[start.weekday()].capitalize()
-        heading = f"{label}, {start:%d/%m/%Y}"
-        if entries:
-            heading += f" · {session_count(len(entries))}"
-    else:
-        heading = f"Del {start:%d/%m/%Y} al {end:%d/%m/%Y} · {session_count(len(entries))}"
-    print(ui.bold(heading))
-
-    if not entries:
-        where = "para esa fecha" if start == end else "en ese rango"
-        if start is None or end is None:
-            where = "en el periodo"
-        print(ui.yellow(f"Sin clases {where}."))
-        return
-
-    grouped: list[tuple[dt.date, list[ClassSession]]] = []
-    for entry in entries:
-        day = entry.date_value
-        if day is None:
-            continue
-        if grouped and grouped[-1][0] == day:
-            grouped[-1][1].append(entry)
-        else:
-            grouped.append((day, [entry]))
-
-    for day, items in grouped:
-        print()
-        print(ui.bold(f"{WEEKDAYS[day.weekday()].capitalize()} {day:%d/%m/%Y}"))
-        rows = [
-            [
-                entry.time_range or "-",
-                entry.course,
-                entry.room or "-",
-                entry.kind or "-",
-                entry.label,
-            ]
-            for entry in items
-        ]
-        print(
-            ui.table(
-                ["Hora", "Curso", "Aula", "Tipo", "Ses."],
-                rows,
-                max_widths=[13, 46, 32, 12, 4],
-            )
-        )
-
-    if start is not None and start == end:
-        print()
-        for entry in entries:
-            print(ui.dim(f"  {entry.label} · {entry.title[:96]}"))
-
-
-def resource_rows(resources: Sequence[Resource]) -> list[list[str]]:
-    return [
-        [
-            resource.session_label,
-            resource.kind_name,
-            resource.title[:60],
-            resource.extension.lstrip(".") or "-",
-            resource.date,
-        ]
-        for resource in resources
-    ]
-
-
-def progress(kind: str, item: DownloadItem, detail: str) -> None:
-    label = f"S{int(item.resource.session):02d} · {item.resource.title[:64]}"
-    if kind == "done":
-        print(f"  {ui.green('[ok]')}   {label} ({detail})")
-    elif kind == "skip":
-        print(f"  {ui.dim('[igual]')} {label}")
-    elif kind == "error":
-        print(f"  {ui.red('[error]')} {label}: {detail}", file=sys.stderr)
-
-
-def print_stats(stats: Any, dry_run: bool = False) -> None:
-    if dry_run:
-        return
-    print()
-    print(
-        f"Descargados: {stats.downloaded} · Ya estaban: {stats.skipped} · "
-        f"Errores: {stats.failed} · Total: {human_size(stats.bytes)}"
-    )
-    for path, message in stats.failures:
-        print(f"  {ui.red('x')} {path}: {message}", file=sys.stderr)
-
-
 # --------------------------------------------------------------------------- #
 # Comandos
 # --------------------------------------------------------------------------- #
@@ -489,7 +260,7 @@ def cmd_whoami(args: argparse.Namespace) -> int:
         "config_dir": str(config.home()),
     }
     if args.json:
-        emit_json(payload)
+        render.emit_json(payload)
         return 0
 
     print(ui.bold("Cuenta del campus"))
@@ -533,7 +304,7 @@ def cmd_credenciales(args: argparse.Namespace) -> int:
             print(ui.yellow(f"No se pudo abrir el editor: {exc}"))
 
     if args.json:
-        emit_json(
+        render.emit_json(
             {
                 "path": str(path),
                 "created": created,
@@ -564,7 +335,7 @@ def cmd_cursos(args: argparse.Namespace) -> int:
     client = client_for(args)
     courses = load_courses(client, refresh=args.refresh)
     if args.json:
-        emit_json([course.to_dict() for course in courses])
+        render.emit_json([course.to_dict() for course in courses])
         return 0
 
     print(ui.bold(f"{len(courses)} cursos · periodo {courses[0].period if courses else '-'}"))
@@ -597,7 +368,7 @@ def cmd_cursos(args: argparse.Namespace) -> int:
 def cmd_curso(args: argparse.Namespace) -> int:
     client = client_for(args)
     courses = load_courses(client)
-    course = resolve_course(courses, args.curso)
+    course = selectors.resolve_course(courses, args.curso)
     topics = client.get_syllabus(course.group_id)
     detail = client.get_course_detail(course.group_id, 0)
     active_resources: list[Resource] = []
@@ -611,7 +382,7 @@ def cmd_curso(args: argparse.Namespace) -> int:
             ]
 
     if args.json:
-        emit_json(
+        render.emit_json(
             {
                 "course": course.to_dict(),
                 "sessions": [topic.to_dict() for topic in topics],
@@ -620,11 +391,11 @@ def cmd_curso(args: argparse.Namespace) -> int:
         )
         return 0
 
-    print_course_header(course)
+    render.print_course_header(course)
     if course.syllabus_url:
         print(f"  Silabo: {course.syllabus_url}")
     if topics:
-        print_syllabus(topics)
+        render.print_syllabus(topics)
     if active_resources:
         print(ui.dim(f"\nSesion activa ({active_resources[0].session_label}) · {len(active_resources)} recursos"))
     print()
@@ -642,13 +413,13 @@ def cmd_horario(args: argparse.Namespace) -> int:
     client = client_for(args)
     courses = load_courses(client)
     if args.curso:
-        courses = [resolve_course(courses, args.curso)]
+        courses = [selectors.resolve_course(courses, args.curso)]
     else:
         active = [course for course in courses if course.state == "activo"]
         courses = active or courses
     entries = load_schedule(client, courses, refresh=args.refresh)
 
-    start, end = schedule_range(args)
+    start, end = selectors.schedule_range(args)
     if start is not None and end is not None:
         entries = [
             entry
@@ -658,7 +429,7 @@ def cmd_horario(args: argparse.Namespace) -> int:
     entries.sort(key=lambda entry: entry.sort_key())
 
     if args.json:
-        emit_json(
+        render.emit_json(
             {
                 "from": start.isoformat() if start else None,
                 "to": end.isoformat() if end else None,
@@ -668,7 +439,7 @@ def cmd_horario(args: argparse.Namespace) -> int:
         )
         return 0
 
-    print_schedule(entries, start, end)
+    render.print_schedule(entries, start, end)
     print()
     print(ui.dim("Opciones: --hoy | --manana | --dia dd/mm/aaaa | --desde/--hasta | --todo"))
     return 0
@@ -687,16 +458,16 @@ def _resources_of(
 def cmd_recursos(args: argparse.Namespace) -> int:
     client = client_for(args)
     courses = load_courses(client)
-    course = resolve_course(courses, args.curso)
-    sessions = parse_sessions(args.sesion)
+    course = selectors.resolve_course(courses, args.curso)
+    sessions = selectors.parse_sessions(args.sesion)
     grouped = _resources_of(client, course, sessions)
 
     flat = [item for _, resources in grouped for item in resources]
     if args.json:
-        emit_json({"course": course.to_dict(), "resources": [item.to_dict() for item in flat]})
+        render.emit_json({"course": course.to_dict(), "resources": [item.to_dict() for item in flat]})
         return 0
 
-    print_course_header(course)
+    render.print_course_header(course)
     total = 0
     for session, resources in grouped:
         label = f"Sesion {session:02d}"
@@ -707,7 +478,7 @@ def cmd_recursos(args: argparse.Namespace) -> int:
         print(
             ui.table(
                 ["Ses.", "Tipo", "Titulo", "Ext", "Fecha"],
-                resource_rows(resources),
+                render.resource_rows(resources),
                 max_widths=[4, 11, 60, 5, 10],
             )
         )
@@ -719,14 +490,14 @@ def cmd_recursos(args: argparse.Namespace) -> int:
 
 
 def _plan(args: argparse.Namespace, client: CampusClient, course: Course) -> list[DownloadItem]:
-    sessions = parse_sessions(args.sesion)
+    sessions = selectors.parse_sessions(args.sesion)
     grouped = _resources_of(client, course, sessions)
     pattern = re.compile(args.solo, re.I) if args.solo else None
     return plan_course(
         course,
         grouped,
         out_dir(args),
-        kinds=kind_filter(args.tipo),
+        kinds=selectors.kind_filter(args.tipo),
         only=pattern,
         include_syllabus=args.incluir_silabo,
     )
@@ -740,7 +511,7 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
 
     for course in courses:
         print()
-        print_course_header(course)
+        render.print_course_header(course)
         items = _plan(args, client, course)
         all_items.extend(items)
         if not items:
@@ -779,11 +550,11 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
         workers=args.workers,
         force=args.forzar,
         referer=client.referer,
-        on_event=progress,
+        on_event=render.progress,
     )
-    print_stats(stats)
+    render.print_stats(stats)
     if args.json:
-        emit_json(
+        render.emit_json(
             {
                 "downloaded": stats.downloaded,
                 "skipped": stats.skipped,
@@ -799,7 +570,7 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
 def cmd_descargar(args: argparse.Namespace) -> int:
     client = client_for(args)
     courses = load_courses(client)
-    course = resolve_course(courses, args.curso)
+    course = selectors.resolve_course(courses, args.curso)
     return _download(args, client, [course])
 
 
@@ -827,7 +598,7 @@ def cmd_cache(args: argparse.Namespace) -> int:
         print(f"Cache borrada: {removed} archivos en {folder}")
         return 0
     if args.json:
-        emit_json({"dir": str(folder), "files": [file.name for file in files]})
+        render.emit_json({"dir": str(folder), "files": [file.name for file in files]})
         return 0
     print(f"Cache: {folder}")
     if not files:
@@ -920,7 +691,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-t",
         "--tipo",
         default="archivo",
-        choices=sorted(KIND_FILTERS),
+        choices=sorted(selectors.KIND_FILTERS),
         help="Que descargar (por defecto: archivo)",
     )
     descargar.add_argument("--solo", help="Filtro regex sobre el titulo del recurso")
@@ -937,7 +708,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-t",
         "--tipo",
         default="archivo",
-        choices=sorted(KIND_FILTERS),
+        choices=sorted(selectors.KIND_FILTERS),
         help="Que descargar (por defecto: archivo)",
     )
     todo.add_argument("--solo", help="Filtro regex sobre el titulo del recurso")

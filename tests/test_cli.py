@@ -14,8 +14,10 @@ from autonoma_cli import ui
 from autonoma_cli.cli import (
     build_parser,
     cmd_horario,
-    kind_filter,
     main,
+)
+from autonoma_cli.selectors import (
+    kind_filter,
     parse_day,
     parse_sessions,
     resolve_course,
