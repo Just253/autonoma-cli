@@ -1,0 +1,44 @@
+"""Comando `horario`: fechas, horas y aulas."""
+
+from __future__ import annotations
+
+import argparse
+
+from .. import render, selectors, ui
+from ..client import CampusClient
+from .data import catalog, schedule
+
+
+def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
+    courses = catalog(client, refresh=args.refresh)
+    if args.curso:
+        courses = [selectors.resolve_course(courses, args.curso)]
+    else:
+        active = [course for course in courses if course.state == "activo"]
+        courses = active or courses
+    entries = schedule(client, courses, refresh=args.refresh)
+
+    start, end = selectors.schedule_range(args)
+    if start is not None and end is not None:
+        entries = [
+            entry
+            for entry in entries
+            if entry.date_value is not None and start <= entry.date_value <= end
+        ]
+    entries.sort(key=lambda entry: entry.sort_key())
+
+    if args.json:
+        render.emit_json(
+            {
+                "from": start.isoformat() if start else None,
+                "to": end.isoformat() if end else None,
+                "count": len(entries),
+                "sessions": [entry.to_dict() for entry in entries],
+            }
+        )
+        return 0
+
+    render.print_schedule(entries, start, end)
+    render.text()
+    render.text(ui.dim("Opciones: --hoy | --manana | --dia dd/mm/aaaa | --desde/--hasta | --todo"))
+    return 0
