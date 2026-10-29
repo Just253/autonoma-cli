@@ -29,5 +29,5 @@ autonoma = "autonoma_cli.cli:main"
 [project.urls]
 Homepage = "https://github.com/Just253/autonoma-cli"
 
-[tool.setuptools]
-packages = ["autonoma_cli"]
+[tool.setuptools.packages.find]
+include = ["autonoma_cli*"]

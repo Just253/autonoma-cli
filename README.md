@@ -283,17 +283,36 @@ trampas están en [`docs/API.md`](docs/API.md).
 
 ```
 autonoma_cli/
-├── cli.py          # parser de argumentos y despacho
-├── commands.py     # run_*: un comando por funcion (client, args)
-├── client.py       # login ASP.NET, cookies y WebMethods
-├── models.py       # Course / SessionTopic / ClassSession / Resource normalizados
-├── downloader.py   # plan, descarga atómica, manifiesto y sha256
-├── cache.py        # caché de cursos y horario en un único cache.json
-├── render.py       # tablas, cabeceras y salida JSON
-├── selectors.py    # filtros de curso, sesión, tipo y fechas
-├── config.py       # credenciales (DPAPI), cookies, preferencias
-├── ui.py           # tablas y color
-└── errors.py       # errores tipados
+├── __init__.py         # versión del paquete
+├── __main__.py         # python -m autonoma_cli
+├── cli.py              # parser de argumentos y despacho
+├── commands/           # un módulo por comando: run_*(client, args)
+│   ├── __init__.py     # reexporta los run_* que usan cli.py y los tests
+│   ├── base.py         # cliente, carpeta de salida y reportes compartidos
+│   ├── data.py         # cursos, horario y recursos con caché
+│   ├── account.py      # login, logout y whoami
+│   ├── courses.py      # cursos y curso
+│   ├── credenciales.py # credenciales: archivo editable a mano
+│   ├── download.py     # descargar y todo
+│   ├── maintenance.py  # cache
+│   ├── resources.py    # recursos de un curso
+│   └── timetable.py    # horario: fechas, horas y aulas
+├── config/             # credenciales, cookies y preferencias
+│   ├── __init__.py     # reexporta la API pública de configuración
+│   ├── paths.py        # rutas, constantes y carpeta del usuario
+│   ├── io.py           # escritura atómica de archivos privados (0600)
+│   ├── crypto.py       # cifrado DPAPI (solo Windows)
+│   ├── credentials.py  # guardar y leer credenciales (cifradas o en claro)
+│   ├── plain.py        # credentials.txt editable a mano
+│   └── settings.py     # settings.json y variables de entorno
+├── client.py           # login ASP.NET, cookies y WebMethods
+├── models.py           # Course / SessionTopic / ClassSession / Resource normalizados
+├── downloader.py       # plan, descarga atómica, manifiesto y sha256
+├── cache.py            # caché de cursos y horario en un único cache.json
+├── render.py           # tablas, cabeceras y salida JSON
+├── selectors.py        # filtros de curso, sesión, tipo y fechas
+├── ui.py               # tablas y color
+└── errors.py           # errores tipados
 ```
 
 ## Desarrollo
