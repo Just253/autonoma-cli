@@ -2,10 +2,6 @@
 
 No prueba comportamiento: fija donde vive cada cosa. Si algo falla, el
 mensaje dice que hacer, no solo que un numero no cuadra.
-
-La guardia esta escrita para el estado de archivo unico *y* para el split en
-paquetes (``commands/``, ``config/``): cada regla se aplica solo a las rutas
-que existen, asi no hay que tocarla mientras se mueve el codigo.
 """
 
 from __future__ import annotations
@@ -33,26 +29,14 @@ SIZE_RULES = (
     (
         r"cli\.py",
         260,
-        "cli.py es solo el parser y el despacho: los run_* van en commands.py "
-        "(despues commands/) y la salida en render.py.",
-    ),
-    (
-        r"commands\.py",
-        500,
-        "commands.py solo guarda lo compartido (client_for, out_dir, report_*): "
-        "cada run_* se muda a commands/<comando>.py, maximo 120 lineas cada uno.",
+        "cli.py es solo el parser y el despacho: los run_* van en commands/ y la "
+        "salida en render.py.",
     ),
     (
         r"commands/.+\.py",
         120,
         "un comando por archivo: si crece, saca el plan a selectors/downloader y "
         "la tabla a render.py.",
-    ),
-    (
-        r"config\.py",
-        500,
-        "config.py se parte por tema en config/ (paths, credenciales, settings, "
-        "io), maximo 200 lineas por archivo.",
     ),
     (
         r"config/.+\.py",
@@ -64,15 +48,15 @@ SIZE_RULES = (
 
 
 def is_config(name: str) -> bool:
-    """True para ``config.py`` y para cualquier archivo de ``config/``."""
+    """True para cualquier archivo de ``config/``."""
 
-    return name == "config.py" or name.startswith("config/")
+    return name.startswith("config/")
 
 
 def is_commands(name: str) -> bool:
-    """True para ``commands.py`` y para cualquier archivo de ``commands/``."""
+    """True para cualquier archivo de ``commands/``."""
 
-    return name == "commands.py" or name.startswith("commands/")
+    return name.startswith("commands/")
 
 
 def tree(name: str) -> ast.Module:
@@ -182,14 +166,14 @@ class ArchitectureTests(unittest.TestCase):
         self.assertEqual(
             len(owners), 1,
             "write_private_text lo define y usa un solo archivo de config "
-            f"(config.py o un unico config/*.py), pero aparece en {owners}: deja "
-            "una sola implementacion y que la cache la importe de ahi.",
+            f"(config/io.py), pero aparece en {owners}: deja una sola "
+            "implementacion y que la cache la importe de ahi.",
         )
         self.assertEqual(
             sorted(users), ["cache.py", *owners],
-            "write_private_text es de config (hoy config.py, despues config/io.py) y "
-            "la cache la guarda solo cache.py (cache.ensure): commands.py no "
-            f"persiste nada a mano. Usuarios encontrados: {sorted(users)}.",
+            "write_private_text es de config/io.py y la cache la guarda solo "
+            "cache.py (cache.ensure): commands/ no persiste nada a mano. "
+            f"Usuarios encontrados: {sorted(users)}.",
         )
 
     def test_json_belongs_to_a_format_owner(self) -> None:
@@ -221,8 +205,7 @@ class ArchitectureTests(unittest.TestCase):
         commands_ok = GRAPH | {name for name in MODULES if is_commands(name)}
         self.assertFalse(
             [name for name in MODULES.keys() - commands_ok if "commands" in imports(name)],
-            "commands.py (y despues commands/) solo lo importa cli.py: si otro modulo "
-            "lo importa, hay un ciclo.",
+            "commands/ solo lo importa cli.py: si otro modulo lo importa, hay un ciclo.",
         )
 
     def test_every_run_takes_client_first(self) -> None:
@@ -273,13 +256,12 @@ class ArchitectureTests(unittest.TestCase):
     def test_only_commands_builds_the_campus_client(self) -> None:
         builders = {name for name in MODULES if calls(name, "CampusClient")}
         self.assertTrue(
-            builders & {"commands.py", "commands/base.py"},
+            "commands/base.py" in builders,
             "commands.client_for es quien construye CampusClient: cli.py solo lo "
             "importa para anotar el tipo.",
         )
-        allowed = {"client.py"} | {n for n in ("commands.py", "commands/base.py") if n in MODULES}
         self.assertLessEqual(
-            builders, allowed,
+            builders, {"client.py", "commands/base.py"},
             f"CampusClient solo se instancia en commands.client_for (lo instancian "
             f"{sorted(builders)}): el resto lo recibe como argumento.",
         )
