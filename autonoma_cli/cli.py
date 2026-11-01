@@ -49,6 +49,22 @@ def _add_download_options(subparser: argparse.ArgumentParser) -> None:
     subparser.add_argument("--seco", "--dry-run", dest="seco", action="store_true", help="Solo mostrar el plan")
     subparser.add_argument("-w", "--workers", type=int, default=None, help="Descargas en paralelo")
     subparser.add_argument("--forzar", action="store_true", help="Volver a bajar aunque exista")
+    subparser.add_argument("--out", default=argparse.SUPPRESS,
+                           help="Carpeta de descargas (por defecto: descargas)")
+
+
+def _add_shared_options(subparser: argparse.ArgumentParser) -> None:
+    """Opciones de la raiz que tambien valen despues del comando.
+
+    Se repiten visibles en la ayuda (como los *persistent flags* de cobra), con
+    ``SUPPRESS`` para que el subparser no pise el valor que el parser raiz ya
+    resolvio cuando la opcion viene antes del comando.
+    """
+
+    subparser.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                           help="Salida JSON")
+    subparser.add_argument("--no-color", action="store_true", default=argparse.SUPPRESS,
+                           help="Desactiva color")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -139,6 +155,10 @@ def build_parser() -> argparse.ArgumentParser:
     for command in (cursos, curso, horario, recursos, descargar, todo):
         command.add_argument("--refresh", action="store_true", default=argparse.SUPPRESS,
                              help="Ignora la cache")  # SUPPRESS: no pisa el --refresh global
+
+    for command in (login, logout, whoami, credenciales, cursos, curso, horario,
+                    recursos, descargar, todo, cache_cmd):
+        _add_shared_options(command)
 
     return parser
 

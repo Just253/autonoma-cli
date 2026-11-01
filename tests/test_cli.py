@@ -112,6 +112,36 @@ class ParserTests(unittest.TestCase):
         self.assertFalse(args.seco)
         self.assertFalse(args.forzar)
 
+    def test_documented_invocations_parse(self) -> None:
+        """Los ejemplos del README y de la skill tienen que parsear tal cual."""
+
+        parser = build_parser()
+        documented = (
+            ["cursos", "--json"],
+            ["curso", "1", "--json"],
+            ["horario", "--todo", "--json"],
+            ["recursos", "1", "--json"],
+            ["descargar", "1", "--out", "salida"],
+            ["todo", "--out", "salida"],
+            ["cursos", "--no-color"],
+            ["descargar", "1", "--seco", "--solo", "presentacion"],
+        )
+        for argv in documented:
+            with self.subTest(argv=argv):
+                args = parser.parse_args(argv)
+                self.assertTrue(callable(args.func))
+
+    def test_global_options_work_before_and_after_the_command(self) -> None:
+        parser = build_parser()
+        self.assertTrue(parser.parse_args(["cursos", "--json"]).json)
+        self.assertTrue(parser.parse_args(["--json", "cursos"]).json)
+        self.assertFalse(parser.parse_args(["cursos"]).json)
+        self.assertTrue(parser.parse_args(["cursos", "--no-color"]).no_color)
+        self.assertTrue(parser.parse_args(["--no-color", "cursos"]).no_color)
+        self.assertEqual(parser.parse_args(["descargar", "1", "--out", "salida"]).out, "salida")
+        self.assertEqual(parser.parse_args(["--out", "salida", "descargar", "1"]).out, "salida")
+        self.assertIsNone(parser.parse_args(["descargar", "1"]).out)
+
 
 def schedule_args(**overrides: object) -> argparse.Namespace:
     values: dict[str, object] = {
@@ -388,6 +418,39 @@ class MainExitCodeTests(IsolatedHomeMixin, unittest.TestCase):
         code, _, err = self.run_main(KeyboardInterrupt())
         self.assertEqual(code, 130)
         self.assertIn("Cancelado.", err)
+
+
+# --------------------------------------------------------------------------- #
+# Los ejemplos de la documentacion, ejecutados de punta a punta
+# --------------------------------------------------------------------------- #
+
+
+class DocumentedInvocationsRunTests(IsolatedHomeMixin, unittest.TestCase):
+    """`autonoma cursos --json` no solo parsea: tiene que devolver JSON."""
+
+    def setUp(self) -> None:
+        self.make_home()
+        ui.configure_color(False)
+        patcher = mock.patch("autonoma_cli.commands.client_for", return_value=FakeCampusClient())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_main(self, *argv: str) -> tuple[int, str]:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = main(list(argv))
+        return code, output.getvalue()
+
+    def test_cursos_json_after_the_command(self) -> None:
+        code, out = self.run_main("cursos", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)[0]["name"], "CURSO DE EJEMPLO UNO")
+
+    def test_horario_json_after_the_command(self) -> None:
+        code, out = self.run_main("horario", "--todo", "--json")
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        self.assertEqual(payload["count"], len(payload["sessions"]))
 
 
 if __name__ == "__main__":

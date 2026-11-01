@@ -92,6 +92,10 @@ autonoma curso 90000001
 autonoma descargar ejemplo
 ```
 
+Las opciones globales (`--json`, `--no-color`, `--out`) valen antes o después
+del comando: `autonoma --json cursos` y `autonoma cursos --json` son
+equivalentes. `--out` solo lo usan los comandos de descarga.
+
 ### Horario y aulas
 
 ```powershell
@@ -202,6 +206,31 @@ descargas/
   mismo tamaño, se omite.
 - `--json` da la misma información en JSON para scripts.
 
+## Salida JSON (`--json`)
+
+`--json` vale antes o después del comando (`autonoma --json cursos` o
+`autonoma cursos --json`). Las claves van en snake_case e inglés: el
+`nGruCodigo` del campus aparece como **`group_id`**, y el resto sigue el mismo
+criterio (`name`, `teacher`, `room`).
+
+| Comando | Forma del JSON |
+|---------|----------------|
+| `cursos` | lista de cursos |
+| `curso` | `{"course", "sessions", "active_session_resources"}` |
+| `recursos` | `{"course", "resources"}` |
+| `horario` | `{"from", "to", "count", "sessions"}` |
+| `descargar` / `todo` | resumen final: `downloaded`, `skipped`, `failed`, `bytes`, `out`, `failures` |
+| `whoami`, `cache`, `credenciales` | `whoami`: cuenta y sesión; `cache`: `{"dir", "files"}`; `credenciales`: `{"path", "created", "loaded", "username", "template"}` |
+
+- Curso: `group_id`, `name`, `code`, `period`, `cycle`, `section`, `group`,
+  `credits`, `modality`, `teacher`, `teacher_email`, `start_date`, `end_date`,
+  `resources_count`, `state`, `syllabus_url`.
+- Recurso: `title`, `kind` (número), `kind_name`, `session`, `session_label`,
+  `resource_id`, `url`, `date`, `extension`, `itinerary`, `description`.
+- Sesión de horario: `group_id`, `course`, `session`, `session_label`, `topic`,
+  `date` (ISO), `weekday`, `weekday_name`, `start_time`, `end_time`,
+  `time_range`, `kind`, `room`, `code`, `recorded`.
+
 ## Credenciales y sesión
 
 - Se guardan en el directorio de configuración del usuario, **nunca en el repo**:
@@ -271,7 +300,20 @@ autonoma whoami
 | `AUTONOMA_CLI_HOME` | Otra carpeta de configuración (pruebas). |
 | `AUTONOMA_OUT` | Carpeta de descargas por defecto. |
 | `AUTONOMA_DELAY` | Pausa entre peticiones (segundos). |
+| `AUTONOMA_TIMEOUT` | Timeout por petición (segundos). |
+| `AUTONOMA_WORKERS` | Descargas en paralelo por defecto (4). |
 | `NO_COLOR` | Desactiva color. |
+
+### `settings.json`
+
+Si existe `settings.json` en la carpeta de configuración (`%APPDATA%\autonoma-cli`
+en Windows, `~/.config/autonoma-cli` en Linux/macOS) la CLI lo lee al arrancar.
+Nada lo escribe automáticamente: es opcional y se edita a mano. Claves: `base_url`,
+`timeout`, `delay`, `workers`, `out_dir` y `max_sessions`.
+
+Precedencia: opciones de la línea de comandos > variables de entorno >
+`settings.json` > valores por defecto (30 s de timeout, 0.5 s de pausa, 4
+descargas en paralelo, `./descargas`).
 
 ## Cómo funciona
 
