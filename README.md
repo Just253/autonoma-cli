@@ -78,6 +78,7 @@ autonoma cursos
 | `autonoma credenciales` | Crea el archivo `credentials.txt` para editar usuario y contraseña a mano. |
 | `autonoma cursos` | Lista los cursos del periodo (alias `ls`). |
 | `autonoma curso CURSO` | Detalle del curso y su sílabo sesión por sesión. |
+| `autonoma historial` | Cursos de todos los periodos, incluidos los cerrados. |
 | `autonoma horario` | Horario de clases con fecha, hora y aula (alias `aula`). |
 | `autonoma recursos CURSO` | Recursos de todas las sesiones (o de `--sesion N`). |
 | `autonoma descargar CURSO` | Descarga los archivos del curso. |
@@ -120,6 +121,25 @@ muestra Periodo y Estado justamente para que no se mezclen.
 
 Con filtros, el índice de la tabla es relativo a lo filtrado; para nombrar un
 curso usa el `nGruCodigo`.
+
+### Historial de cursos
+
+```powershell
+autonoma historial
+autonoma historial --periodo 209801
+autonoma historial --ciclo 3
+autonoma historial --curso "ejemplo"
+autonoma historial --json
+```
+
+- Recorre **todas las currículas** del alumno, así que aparecen los periodos
+  cerrados aunque el curso haya quedado en un plan antiguo.
+- `Estado` es lo que reporta el campus (`APROBADA`, `EN PROCESO`, …) y
+  `Matricula` distingue la matrícula regular de la web de alumno.
+- Los cursos del historial sirven para todo igual que los actuales:
+  `autonoma curso 90000011`, `autonoma recursos 90000011` y
+  `autonoma descargar 90000011 --seco`.
+- Se guarda 6 horas en la misma caché que los cursos; `--refresh` la fuerza.
 
 ### Horario y aulas
 
@@ -244,6 +264,7 @@ criterio (`name`, `teacher`, `room`).
 | `curso` | `{"course", "sessions", "active_session_resources"}` |
 | `recursos` | `{"course", "resources"}` |
 | `horario` | `{"from", "to", "count", "sessions"}` |
+| `historial` | lista de cursos de todos los periodos |
 | `descargar` / `todo` | resumen final: `downloaded`, `skipped`, `failed`, `bytes`, `out`, `failures` |
 | `whoami`, `cache`, `credenciales` | `whoami`: cuenta y sesión; `cache`: `{"dir", "files"}`; `credenciales`: `{"path", "created", "loaded", "username", "template"}` |
 
@@ -255,6 +276,8 @@ criterio (`name`, `teacher`, `room`).
 - Sesión de horario: `group_id`, `course`, `session`, `session_label`, `topic`,
   `date` (ISO), `weekday`, `weekday_name`, `start_time`, `end_time`,
   `time_range`, `kind`, `room`, `code`, `recorded`.
+- Curso del historial: `group_id`, `name`, `code`, `period`, `cycle`,
+  `section`, `group`, `credits`, `teacher`, `career`, `state`, `enrollment`.
 
 ## Credenciales y sesión
 
@@ -361,6 +384,7 @@ autonoma_cli/
 │   ├── courses.py      # cursos y curso
 │   ├── credenciales.py # credenciales: archivo editable a mano
 │   ├── download.py     # descargar y todo
+│   ├── history.py      # historial: cursos de todos los periodos
 │   ├── maintenance.py  # cache
 │   ├── resources.py    # recursos de un curso
 │   └── timetable.py    # horario: fechas, horas y aulas

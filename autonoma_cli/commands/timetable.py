@@ -6,7 +6,7 @@ import argparse
 
 from .. import render, selectors, ui
 from ..client import CampusClient
-from .data import catalog, schedule
+from .data import catalog, resolve_any, schedule
 
 
 def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
@@ -32,7 +32,7 @@ def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
             render.text("Sin cursos que coincidan con el filtro.")
         return 0
     if args.curso:
-        courses = [selectors.resolve_course(courses, args.curso)]
+        courses = [resolve_any(client, courses, args.curso, refresh=args.refresh)]
     else:
         active = [course for course in courses if course.state == "activo"]
         courses = active or courses

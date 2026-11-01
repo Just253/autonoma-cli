@@ -6,12 +6,12 @@ import argparse
 
 from .. import render, selectors, ui
 from ..client import CampusClient
-from .data import _resources_of, catalog
+from .data import _resources_of, catalog, resolve_any
 
 
 def run_recursos(client: CampusClient, args: argparse.Namespace) -> int:
     courses = catalog(client, refresh=args.refresh)
-    course = selectors.resolve_course(courses, args.curso)
+    course = resolve_any(client, courses, args.curso, refresh=args.refresh)
     sessions = selectors.parse_sessions(args.sesion)
     grouped = _resources_of(client, course, sessions)
 

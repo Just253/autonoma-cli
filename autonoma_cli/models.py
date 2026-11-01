@@ -295,6 +295,94 @@ class Course:
 
 
 @dataclass(frozen=True)
+class HistoryCourse:
+    """Curso de un periodo cerrado, tal como lo devuelve el historial."""
+
+    group_id: int | str
+    name: str
+    code: str
+    period: str
+    cycle: str
+    section: str
+    group: str
+    credits: str
+    teacher: str
+    career: str
+    state: str
+    enrollment: str
+    raw: Mapping[str, Any] = field(default=None, repr=False, compare=False)  # type: ignore[assignment]
+
+    @classmethod
+    def from_api(cls, data: Mapping[str, Any]) -> "HistoryCourse":
+        return cls(
+            group_id=data.get("nGruCodigo"),
+            name=clean_text(data.get("asignatura")) or "Curso sin nombre",
+            code=clean_text(data.get("cCodigoAsignatura")),
+            period=clean_text(data.get("cPeriodo")),
+            cycle=clean_text(data.get("nCiclo")),
+            section=clean_text(data.get("cSeccion")),
+            group=clean_text(data.get("Grupo")),
+            credits=clean_text(data.get("nNroCredito")),
+            teacher=clean_text(data.get("docente")),
+            career=clean_text(data.get("carrera")),
+            state=clean_text(data.get("cEstado")),
+            enrollment=clean_text(data.get("cTipo")),
+            raw=data,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "group_id": self.group_id,
+            "name": self.name,
+            "code": self.code,
+            "period": self.period,
+            "cycle": self.cycle,
+            "section": self.section,
+            "group": self.group,
+            "credits": self.credits,
+            "teacher": self.teacher,
+            "career": self.career,
+            "state": self.state,
+            "enrollment": self.enrollment,
+        }
+
+    def matches(self, token: str) -> bool:
+        token = token.strip().lower()
+        if not token:
+            return False
+        if token == str(self.group_id):
+            return True
+        haystack = " ".join(
+            (self.name, self.code, self.group, self.section, self.period, self.teacher, self.career)
+        ).lower()
+        return token in haystack
+
+    def to_course(self) -> "Course":
+        """Adapta la fila del historial al modelo que usan los comandos."""
+
+        return Course(
+            group_id=self.group_id,
+            name=self.name,
+            code=self.code,
+            period=self.period,
+            cycle=self.cycle,
+            section=self.section,
+            group=self.group,
+            credits=self.credits,
+            modality="",
+            teacher=self.teacher,
+            teacher_email="",
+            start_date="",
+            end_date="",
+            resources_count=0,
+            state="activo" if fold(self.state) == "en proceso" else "inactivo",
+            syllabus_url="",
+            career=self.career,
+            raw=self.raw,
+        )
+
+
+@dataclass(frozen=True)
 class SessionTopic:
     number: int
     label: str

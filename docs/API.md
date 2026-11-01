@@ -194,3 +194,29 @@ GET /uploads/<url>
   luego por `orden` si necesitas la secuencia pedagógica.
 - Los WebMethods pueden devolver `d` como string JSON o como objeto: normaliza
   siempre.
+
+## 7. Historial de cursos (otra app interna)
+
+La página `/Campus/ua/MisCursos/HistorialCursos/Camp_Virt_HistCursos.aspx` (se
+carga con un `POST` vacío dentro del contenedor de Mis Cursos) trae la tabla
+vacía; los datos los piden dos WebMethods que viven en otras rutas:
+
+| Método | Ruta | Payload | Devuelve |
+|--------|------|---------|----------|
+| `obtenerUniOrgCurriculo` | `/Modulos/Campus/MisCursos/Ca_Mc_CursosMatriculados.aspx` | `{cPerCodigo, nTipCur}` | currículas |
+| `ObtenerCursosByCurricula` | `/CampusVirtual/ua/Alumno/MisCursos/Alu_HistorialCursos.aspx` | `{nCurCodigo, cPerCodigo, cTablas}` | `{HISTORIAL_CURSOS, PERIODO_HISTORIAL_CURSOS}` |
+
+- `cPerCodigo` es el código de alumno que está en `<input id="cPerCodigo">` de
+  `Default.aspx`. Sin él, `obtenerUniOrgCurriculo` devuelve `[]`.
+- `nTipCur`: `1` carrera, `2` extraacadémicos (idiomas). `3` y `102` existen en
+  el JS (posgrado y talleres) y suelen venir vacíos.
+- `nCurCodigo` es la **currícula**, no la carrera: un alumno puede tener varias
+  (la vigente y las antiguas) y los cursos viejos viven en las no vigentes. Hay
+  que recorrerlas todas y deduplicar por `nGruCodigo`.
+- `cTablas` pide las dos tablas juntas, separadas por coma.
+- Las filas de `HISTORIAL_CURSOS` traen `cPeriodo`, `nCiclo`, `asignatura`,
+  `cEstado` (`APROBADA`, `EN PROCESO`, …), `cTipo`, `docente` y `nGruCodigo`.
+- Las rutas `/CampusVirtual` y `/Modulos` comparten la cookie de `/Campus`.
+- Los `nGruCodigo` del historial siguen respondiendo a
+  `getInformationDetailCurso`: sílabo y recursos de periodos cerrados se pueden
+  consultar y descargar.

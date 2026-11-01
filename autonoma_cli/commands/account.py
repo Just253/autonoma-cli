@@ -57,6 +57,7 @@ def run_logout(client: CampusClient, args: argparse.Namespace) -> int:
 
 
 def run_whoami(client: CampusClient, args: argparse.Namespace) -> int:
+    client.ensure_student_code()
     info = client.describe()
     credentials = config.credentials_info()
 

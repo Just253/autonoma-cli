@@ -12,7 +12,7 @@ from ..downloader import DownloadItem, Manifest, plan_course, run_plan
 from ..errors import UsageError
 from ..models import Course
 from .base import out_dir
-from .data import _resources_of, catalog
+from .data import _resources_of, catalog, resolve_any
 
 
 def _plan(args: argparse.Namespace, client: CampusClient, course: Course) -> list[DownloadItem]:
@@ -93,7 +93,7 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
 
 def run_descargar(client: CampusClient, args: argparse.Namespace) -> int:
     courses = catalog(client, refresh=args.refresh)
-    course = selectors.resolve_course(courses, args.curso)
+    course = resolve_any(client, courses, args.curso, refresh=args.refresh)
     return _download(args, client, [course])
 
 

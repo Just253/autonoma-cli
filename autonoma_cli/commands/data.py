@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .. import cache
+from .. import cache, selectors
 from ..client import CampusClient
-from ..models import ClassSession, Course, Resource
+from ..errors import UsageError
+from ..models import ClassSession, Course, HistoryCourse, Resource
 
 
 def catalog(client: CampusClient, *, refresh: bool = False) -> list[Course]:
@@ -52,3 +53,41 @@ def _resources_of(
     if sessions:
         return [(session, client.get_session_resources(course.group_id, session)) for session in sessions]
     return client.iter_session_resources(course.group_id)
+
+
+def history(client: CampusClient, *, refresh: bool = False) -> list[HistoryCourse]:
+    """Cursos de todos los periodos, con cache de 6 horas."""
+
+    items = cache.ensure(
+        cache.for_campus(client.base_url),
+        f"historial:{client.student_code or 'anon'}",
+        ttl=cache.MAX_AGE_CURSOS,
+        fetch=lambda: [dict(row) for row in client.get_history()],
+        force=refresh,
+    )
+    records = items if isinstance(items, list) else []
+    return [HistoryCourse.from_api(item) for item in records if isinstance(item, dict)]
+
+
+def resolve_any(
+    client: CampusClient, courses: Sequence[Course], token: str, *, refresh: bool = False
+) -> Course:
+    """Resuelve en el catalogo actual y, si no esta, en el historial."""
+
+    try:
+        return selectors.resolve_course(courses, token)
+    except UsageError as current_error:
+        text = (token or "").strip()
+        found = [
+            course
+            for course in history(client, refresh=refresh)
+            if str(course.group_id) == text or course.matches(text)
+        ]
+        if len(found) == 1:
+            return found[0].to_course()
+        if len(found) > 1:
+            listing = "\n".join(f"  - {course.name} ({course.period})" for course in found)
+            raise UsageError(
+                f"Varios cursos del historial coinciden con {text!r}:\n{listing}"
+            ) from None
+        raise current_error

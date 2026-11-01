@@ -67,13 +67,14 @@ def _add_shared_options(subparser: argparse.ArgumentParser) -> None:
                            help="Desactiva color")
 
 
-def _add_course_filters(subparser: argparse.ArgumentParser) -> None:
+def _add_course_filters(subparser: argparse.ArgumentParser, *, active: bool = True) -> None:
     """Filtros para separar cursos de otro ciclo, periodo o carrera."""
 
     subparser.add_argument("--ciclo", help="Solo los cursos de ese ciclo (por ejemplo 8)")
     subparser.add_argument("--periodo", help="Solo los cursos de ese periodo (por ejemplo 209901)")
     subparser.add_argument("--carrera", help="Solo cursos cuya carrera contenga el texto")
-    subparser.add_argument("--activos", action="store_true", help="Solo los cursos activos")
+    if active:
+        subparser.add_argument("--activos", action="store_true", help="Solo los cursos activos")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -161,16 +162,24 @@ def build_parser() -> argparse.ArgumentParser:
     cache_cmd.add_argument("--borrar", action="store_true", help="Borrar los archivos de cache")
     cache_cmd.set_defaults(func=commands.run_cache, needs_client=False)
 
+    historial = sub.add_parser(
+        "historial",
+        help="Cursos de todos los periodos (aprobados y en curso)",
+    )
+    historial.add_argument("--curso", help="Filtra por texto del nombre o nGruCodigo")
+    historial.set_defaults(func=commands.run_historial)
+
     for command in (cursos, curso, horario, recursos, descargar, todo):
         command.add_argument("--refresh", action="store_true", default=argparse.SUPPRESS,
                              help="Ignora la cache")  # SUPPRESS: no pisa el --refresh global
 
     for command in (login, logout, whoami, credenciales, cursos, curso, horario,
-                    recursos, descargar, todo, cache_cmd):
+                    recursos, descargar, todo, cache_cmd, historial):
         _add_shared_options(command)
 
     for command in (cursos, horario, todo):
         _add_course_filters(command)
+    _add_course_filters(historial, active=False)
 
     return parser
 

@@ -398,6 +398,58 @@ class CampusClient:
             },
         )
 
+    def ensure_student_code(self) -> str:
+        """Lee el codigo de alumno si aun no lo tenemos.
+
+        Con la cookie guardada no hay login y el codigo solo aparece en
+        Default.aspx; sin el, el historial responde vacio.
+        """
+
+        if self.student_code:
+            return self.student_code
+        request = Request(
+            self._default_url,
+            headers={**self.headers, "Referer": self._default_url},
+        )
+        with self._open(request) as response:
+            html = response.read().decode("utf-8", "replace")
+        self.student_code = _extract_student_code(html)
+        return self.student_code
+
+    def get_curricula(self, kind: int = 1) -> list[Mapping[str, Any]]:
+        """Curriculas del alumno (1 = carrera, 2 = extraacademicos)."""
+
+        data = self._call(
+            "obtenerUniOrgCurriculo",
+            {"cPerCodigo": self.ensure_student_code(), "nTipCur": kind},
+            page="/Modulos/Campus/MisCursos/Ca_Mc_CursosMatriculados.aspx",
+        )
+        return _as_records(data)
+
+    def get_history(self) -> list[Mapping[str, Any]]:
+        """Cursos de todos los periodos: recorre cada curricula del alumno."""
+
+        rows: list[Mapping[str, Any]] = []
+        seen: set[str] = set()
+        for curriculum in self.get_curricula():
+            data = self._call(
+                "ObtenerCursosByCurricula",
+                {
+                    "nCurCodigo": curriculum.get("nCurCodigo"),
+                    "cPerCodigo": "",
+                    "cTablas": "HISTORIAL_CURSOS,PERIODO_HISTORIAL_CURSOS",
+                },
+                page="/CampusVirtual/ua/Alumno/MisCursos/Alu_HistorialCursos.aspx",
+            )
+            if not isinstance(data, Mapping):
+                continue
+            for row in _as_records(data.get("HISTORIAL_CURSOS")):
+                key = str(row.get("nGruCodigo"))
+                if key not in seen:
+                    seen.add(key)
+                    rows.append(row)
+        return rows
+
     def get_syllabus(self, group_id: int | str) -> list[SessionTopic]:
         data = self.get_course_detail(group_id, 0)
         topics: Iterable[Any] = ()

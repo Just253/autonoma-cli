@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-from typing import Sequence
+from typing import Protocol, Sequence
 
 from .errors import UsageError
 from .models import Course, fold, parse_date
@@ -58,8 +58,17 @@ def schedule_range(args: argparse.Namespace) -> tuple[dt.date | None, dt.date | 
     return start, end
 
 
+class CourseFields(Protocol):
+    """Lo que necesitan los filtros: sirve Course y HistoryCourse."""
+
+    cycle: str
+    period: str
+    career: str
+    state: str
+
+
 def filter_courses(
-    courses: Sequence[Course],
+    courses: Sequence[CourseFields],
     *,
     cycle: str | None = None,
     period: str | None = None,
