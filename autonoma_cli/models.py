@@ -82,6 +82,12 @@ def clean_text(value: Any) -> str:
     return str(value).strip()
 
 
+def fold(text: Any) -> str:
+    """Minusculas y sin acentos: comparar texto del campus sin pelearse."""
+
+    return clean_text(text).translate(_ACCENTS).casefold()
+
+
 _TAGS = re.compile(r"<[^>]+>")
 
 
@@ -216,6 +222,7 @@ class Course:
     resources_count: int
     state: str
     syllabus_url: str
+    career: str = ""
     raw: Mapping[str, Any] = field(default=None, repr=False, compare=False)  # type: ignore[assignment]
 
     @classmethod
@@ -250,6 +257,7 @@ class Course:
             resources_count=resources_count,
             state="activo" if clean_text(data.get("EstadoCurso")) == "1" else "inactivo",
             syllabus_url=resolve_upload_url(base_url, syllabus) if syllabus else "",
+            career=clean_text(data.get("carrera")),
             raw=data,
         )
 
@@ -271,6 +279,7 @@ class Course:
             "resources_count": self.resources_count,
             "state": self.state,
             "syllabus_url": self.syllabus_url,
+            "career": self.career,
         }
 
     def matches(self, token: str) -> bool:
@@ -280,7 +289,7 @@ class Course:
         if token == str(self.group_id):
             return True
         haystack = " ".join(
-            (self.name, self.code, self.group, self.section, self.period, self.teacher)
+            (self.name, self.code, self.group, self.section, self.period, self.teacher, self.career)
         ).lower()
         return token in haystack
 

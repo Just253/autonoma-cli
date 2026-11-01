@@ -67,6 +67,15 @@ def _add_shared_options(subparser: argparse.ArgumentParser) -> None:
                            help="Desactiva color")
 
 
+def _add_course_filters(subparser: argparse.ArgumentParser) -> None:
+    """Filtros para separar cursos de otro ciclo, periodo o carrera."""
+
+    subparser.add_argument("--ciclo", help="Solo los cursos de ese ciclo (por ejemplo 8)")
+    subparser.add_argument("--periodo", help="Solo los cursos de ese periodo (por ejemplo 209901)")
+    subparser.add_argument("--carrera", help="Solo cursos cuya carrera contenga el texto")
+    subparser.add_argument("--activos", action="store_true", help="Solo los cursos activos")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="autonoma",
@@ -159,6 +168,9 @@ def build_parser() -> argparse.ArgumentParser:
     for command in (login, logout, whoami, credenciales, cursos, curso, horario,
                     recursos, descargar, todo, cache_cmd):
         _add_shared_options(command)
+
+    for command in (cursos, horario, todo):
+        _add_course_filters(command)
 
     return parser
 

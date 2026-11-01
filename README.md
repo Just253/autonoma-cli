@@ -4,7 +4,8 @@ CLI para **ver los cursos** y **descargar los archivos** del Campus Virtual de l
 Universidad Autónoma del Perú desde la terminal. Sin navegador, sin clics y sin
 dependencias externas: solo Python.
 
-- Lista tus cursos del periodo con docente, grupo, ciclo y cantidad de recursos.
+- Lista tus cursos del periodo con docente, grupo, ciclo, periodo, estado y
+  cantidad de recursos.
 - Muestra el sílabo de cada curso (sesiones, semanas, temas y logros).
 - Muestra el horario de cada sesión: fecha, hora, modalidad y **aula**.
 - Lista los recursos de cada sesión (archivos, tareas, evaluaciones, foros, SCORM).
@@ -61,10 +62,10 @@ autonoma cursos
 ```
 2 cursos · periodo 209901
 
-#   Curso                          Codigo       Grupo  Ciclo  Docente                  Rec.
---  -----------------------------  -----------  -----  -----  -----------------------  ----
-1   CURSO DE EJEMPLO UNO           PISOP00001   1A1-A      1  DOCENTE DE EJEMPLO        12
-2   CURSO DE EJEMPLO DOS           PISOP00002   1A1-A      1  DOCENTE DE EJEMPLO         8
+#  Curso                      Codigo      Grupo  Ciclo  Periodo  Estado  Docente          Rec.
+-  -------------------------  ----------  -----  -----  -------  ------  ---------------  ----
+1  CURSO DE EJEMPLO UNO       PISOP00001  1A1-A      1   209901  activo  DOCENTE EJEMPLO    12
+2  CURSO DE EJEMPLO DOS       PISOP00002  1A1-A      1   209901  activo  DOCENTE EJEMPLO     8
 ```
 
 ## Comandos
@@ -95,6 +96,30 @@ autonoma descargar ejemplo
 Las opciones globales (`--json`, `--no-color`, `--out`) valen antes o después
 del comando: `autonoma --json cursos` y `autonoma cursos --json` son
 equivalentes. `--out` solo lo usan los comandos de descarga.
+
+### Filtrar cursos
+
+`cursos`, `horario` y `todo` aceptan los mismos filtros, combinables:
+
+```powershell
+autonoma cursos --ciclo 8
+autonoma cursos --periodo 209802
+autonoma cursos --carrera "ejemplo"
+autonoma cursos --activos
+autonoma todo --periodo 209901 --seco
+```
+
+- `--ciclo` y `--periodo` comparan por igualdad (`8`, `209901`).
+- `--carrera` busca el texto dentro de la carrera, sin distinguir acentos ni
+  mayúsculas.
+- `--activos` deja solo los cursos con `EstadoCurso = 1`.
+
+Filtran lo que devuelve el campus, no consultan periodos históricos: si un curso
+de otro periodo no aparece, es que el campus no lo mandó. La tabla de `cursos`
+muestra Periodo y Estado justamente para que no se mezclen.
+
+Con filtros, el índice de la tabla es relativo a lo filtrado; para nombrar un
+curso usa el `nGruCodigo`.
 
 ### Horario y aulas
 
@@ -224,7 +249,7 @@ criterio (`name`, `teacher`, `room`).
 
 - Curso: `group_id`, `name`, `code`, `period`, `cycle`, `section`, `group`,
   `credits`, `modality`, `teacher`, `teacher_email`, `start_date`, `end_date`,
-  `resources_count`, `state`, `syllabus_url`.
+  `resources_count`, `state`, `syllabus_url`, `career`.
 - Recurso: `title`, `kind` (número), `kind_name`, `session`, `session_label`,
   `resource_id`, `url`, `date`, `extension`, `itinerary`, `description`.
 - Sesión de horario: `group_id`, `course`, `session`, `session_label`, `topic`,

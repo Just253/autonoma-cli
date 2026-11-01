@@ -7,7 +7,7 @@ import datetime as dt
 from typing import Sequence
 
 from .errors import UsageError
-from .models import Course, parse_date
+from .models import Course, fold, parse_date
 
 KIND_FILTERS: dict[str, set[int] | None] = {
     "archivo": {2},
@@ -56,6 +56,35 @@ def schedule_range(args: argparse.Namespace) -> tuple[dt.date | None, dt.date | 
     if end < start:
         raise UsageError("--hasta no puede ser anterior a --desde.")
     return start, end
+
+
+def filter_courses(
+    courses: Sequence[Course],
+    *,
+    cycle: str | None = None,
+    period: str | None = None,
+    career: str | None = None,
+    active: bool = False,
+) -> list[Course]:
+    """Cursos que pasan los filtros de ciclo, periodo, carrera y estado.
+
+    Los textos se comparan sin acentos ni mayusculas; ciclo y periodo, por
+    igualdad. Sin filtros devuelve la lista tal cual.
+    """
+
+    result = list(courses)
+    if cycle:
+        wanted = fold(cycle)
+        result = [course for course in result if fold(course.cycle) == wanted]
+    if period:
+        wanted = fold(period)
+        result = [course for course in result if fold(course.period) == wanted]
+    if career:
+        wanted = fold(career)
+        result = [course for course in result if wanted in fold(course.career)]
+    if active:
+        result = [course for course in result if course.state == "activo"]
+    return result
 
 
 def resolve_course(courses: Sequence[Course], token: str) -> Course:

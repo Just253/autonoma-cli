@@ -10,7 +10,27 @@ from .data import catalog, schedule
 
 
 def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
-    courses = catalog(client, refresh=args.refresh)
+    start, end = selectors.schedule_range(args)
+    courses = selectors.filter_courses(
+        catalog(client, refresh=args.refresh),
+        cycle=args.ciclo,
+        period=args.periodo,
+        career=args.carrera,
+        active=args.activos,
+    )
+    if not courses:
+        if args.json:
+            render.emit_json(
+                {
+                    "from": start.isoformat() if start else None,
+                    "to": end.isoformat() if end else None,
+                    "count": 0,
+                    "sessions": [],
+                }
+            )
+        else:
+            render.text("Sin cursos que coincidan con el filtro.")
+        return 0
     if args.curso:
         courses = [selectors.resolve_course(courses, args.curso)]
     else:
@@ -18,7 +38,6 @@ def run_horario(client: CampusClient, args: argparse.Namespace) -> int:
         courses = active or courses
     entries = schedule(client, courses, refresh=args.refresh)
 
-    start, end = selectors.schedule_range(args)
     if start is not None and end is not None:
         entries = [
             entry

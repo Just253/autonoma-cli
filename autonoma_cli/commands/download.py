@@ -98,9 +98,17 @@ def run_descargar(client: CampusClient, args: argparse.Namespace) -> int:
 
 
 def run_todo(client: CampusClient, args: argparse.Namespace) -> int:
-    courses = catalog(client, refresh=args.refresh)
+    courses = selectors.filter_courses(
+        catalog(client, refresh=args.refresh),
+        cycle=args.ciclo,
+        period=args.periodo,
+        career=args.carrera,
+        active=args.activos,
+    )
     if args.curso:
         courses = [course for course in courses if course.matches(args.curso)]
         if not courses:
             raise UsageError(f"No hay cursos que coincidan con {args.curso!r}.")
+    if not courses:
+        raise UsageError("No hay cursos que coincidan con --ciclo/--periodo/--carrera/--activos.")
     return _download(args, client, courses)

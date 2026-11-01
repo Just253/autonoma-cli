@@ -17,6 +17,7 @@ from autonoma_cli.cli import (
 )
 from autonoma_cli.commands import run_horario
 from autonoma_cli.selectors import (
+    filter_courses,
     kind_filter,
     parse_day,
     parse_sessions,
@@ -141,6 +142,91 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(parser.parse_args(["descargar", "1", "--out", "salida"]).out, "salida")
         self.assertEqual(parser.parse_args(["--out", "salida", "descargar", "1"]).out, "salida")
         self.assertIsNone(parser.parse_args(["descargar", "1"]).out)
+
+    def test_course_filters_parse(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["cursos", "--ciclo", "8", "--periodo", "209901", "--carrera", "software", "--activos"]
+        )
+        self.assertEqual((args.ciclo, args.periodo, args.carrera, args.activos),
+                         ("8", "209901", "software", True))
+        horario = parser.parse_args(["horario", "--ciclo", "2"])
+        self.assertEqual(horario.ciclo, "2")
+        self.assertFalse(horario.activos)
+
+
+def mixed_courses() -> list[Course]:
+    """Tres cursos: dos periodos, dos carreras, uno inactivo."""
+
+    return [
+        Course.from_api(
+            {
+                "nGruCodigo": 90000001,
+                "asignatura": "CURSO DE EJEMPLO UNO",
+                "periodo": "209901",
+                "ciclo": "8",
+                "carrera": "INGENIERÍA DE EJEMPLO",
+                "EstadoCurso": "1",
+            },
+            BASE,
+        ),
+        Course.from_api(
+            {
+                "nGruCodigo": 90000002,
+                "asignatura": "CURSO DE EJEMPLO DOS",
+                "periodo": "209802",
+                "ciclo": "2",
+                "carrera": "INGENIERÍA DE EJEMPLO",
+                "EstadoCurso": "2",
+            },
+            BASE,
+        ),
+        Course.from_api(
+            {
+                "nGruCodigo": 90000003,
+                "asignatura": "CURSO DE EJEMPLO TRES",
+                "periodo": "209901",
+                "ciclo": "2",
+                "carrera": "ADMINISTRACIÓN DE EJEMPLO",
+                "EstadoCurso": "1",
+            },
+            BASE,
+        ),
+    ]
+
+
+class CourseFilterTests(unittest.TestCase):
+    def test_without_filters_returns_everything(self) -> None:
+        self.assertEqual(len(filter_courses(mixed_courses())), 3)
+
+    def test_by_cycle_and_period(self) -> None:
+        self.assertEqual(
+            [course.name for course in filter_courses(mixed_courses(), cycle="2")],
+            ["CURSO DE EJEMPLO DOS", "CURSO DE EJEMPLO TRES"],
+        )
+        self.assertEqual(
+            [course.name for course in filter_courses(mixed_courses(), period="209901")],
+            ["CURSO DE EJEMPLO UNO", "CURSO DE EJEMPLO TRES"],
+        )
+
+    def test_by_career_ignores_accents_and_case(self) -> None:
+        found = filter_courses(mixed_courses(), career="administracion")
+        self.assertEqual([course.name for course in found], ["CURSO DE EJEMPLO TRES"])
+
+    def test_active_only(self) -> None:
+        found = filter_courses(mixed_courses(), active=True)
+        self.assertEqual(
+            [course.name for course in found], ["CURSO DE EJEMPLO UNO", "CURSO DE EJEMPLO TRES"]
+        )
+
+    def test_filters_combine(self) -> None:
+        self.assertEqual(
+            filter_courses(mixed_courses(), period="209901", cycle="2", active=True),
+            [mixed_courses()[2]],
+        )
+
+    def test_unknown_combination_is_empty(self) -> None:
+        self.assertEqual(filter_courses(mixed_courses(), period="209999"), [])
 
 
 def schedule_args(**overrides: object) -> argparse.Namespace:
@@ -288,6 +374,10 @@ def horario_args(**overrides: object) -> argparse.Namespace:
         "hasta": None,
         "refresh": False,
         "json": False,
+        "ciclo": None,
+        "periodo": None,
+        "carrera": None,
+        "activos": False,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -451,6 +541,53 @@ class DocumentedInvocationsRunTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(code, 0)
         payload = json.loads(out)
         self.assertEqual(payload["count"], len(payload["sessions"]))
+
+
+class MixedCoursesClient(FakeCampusClient):
+    def get_courses(self) -> list[Course]:
+        return mixed_courses()
+
+
+class CursosCommandTests(IsolatedHomeMixin, unittest.TestCase):
+    """La tabla de `cursos` tiene que separar periodo, estado y carrera."""
+
+    def setUp(self) -> None:
+        self.make_home()
+        ui.configure_color(False)
+        patcher = mock.patch("autonoma_cli.commands.client_for", return_value=MixedCoursesClient())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_main(self, *argv: str) -> tuple[int, str]:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = main(list(argv))
+        return code, output.getvalue()
+
+    def test_header_names_every_period(self) -> None:
+        code, out = self.run_main("cursos")
+        self.assertEqual(code, 0)
+        self.assertIn("3 cursos · periodos 209802, 209901", out)
+        self.assertIn("Periodo", out)
+        self.assertIn("Estado", out)
+        self.assertIn("inactivo", out)
+
+    def test_period_filter_reaches_json(self) -> None:
+        code, out = self.run_main("cursos", "--periodo", "209802", "--json")
+        self.assertEqual(code, 0)
+        payload = json.loads(out)
+        self.assertEqual([course["name"] for course in payload], ["CURSO DE EJEMPLO DOS"])
+        self.assertEqual(payload[0]["career"], "INGENIERÍA DE EJEMPLO")
+
+    def test_empty_filter_says_so(self) -> None:
+        code, out = self.run_main("cursos", "--ciclo", "9")
+        self.assertEqual(code, 0)
+        self.assertIn("Sin cursos que coincidan con el filtro.", out)
+
+    def test_single_course_header_is_singular(self) -> None:
+        code, out = self.run_main("cursos", "--periodo", "209802")
+        self.assertEqual(code, 0)
+        self.assertIn("1 curso · periodo 209802", out)
 
 
 if __name__ == "__main__":

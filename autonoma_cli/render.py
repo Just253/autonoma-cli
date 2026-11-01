@@ -32,7 +32,11 @@ def print_course_header(course: Course) -> None:
         f"{course.credits} creditos" if course.credits else "",
         course.modality,
     ]
+    if course.state and course.state != "activo":
+        details.append(course.state)
     print("  " + " · ".join(part for part in details if part))
+    if course.career:
+        print(f"  Carrera: {course.career}")
     if course.teacher:
         contact = f" <{course.teacher_email}>" if course.teacher_email else ""
         print(f"  Docente: {course.teacher}{contact}")

@@ -11,33 +11,54 @@ from .data import catalog
 
 
 def run_cursos(client: CampusClient, args: argparse.Namespace) -> int:
-    courses = catalog(client, refresh=args.refresh)
+    courses = selectors.filter_courses(
+        catalog(client, refresh=args.refresh),
+        cycle=args.ciclo,
+        period=args.periodo,
+        career=args.carrera,
+        active=args.activos,
+    )
     if args.json:
         render.emit_json([course.to_dict() for course in courses])
         return 0
+    if not courses:
+        render.text("Sin cursos que coincidan con el filtro.")
+        return 0
 
-    render.text(ui.bold(f"{len(courses)} cursos · periodo {courses[0].period if courses else '-'}"))
+    periods = sorted({course.period for course in courses if course.period})
+    plural = "periodo" if len(periods) == 1 else "periodos"
+    counted = f"{len(courses)} curso{'s' if len(courses) != 1 else ''}"
+    render.text(ui.bold(f"{counted} · {plural} {', '.join(periods) or '-'}"))
     rows = [
         [
             index,
-            course.name[:44],
+            course.name[:34],
             course.code,
             course.group,
             course.cycle,
-            course.teacher[:24],
+            course.period,
+            course.state,
+            course.teacher[:18],
             course.resources_count,
         ]
         for index, course in enumerate(courses, start=1)
     ]
     render.text()
     render.text(ui.table(
-        ["#", "Curso", "Codigo", "Grupo", "Ciclo", "Docente", "Rec."],
+        ["#", "Curso", "Codigo", "Grupo", "Ciclo", "Periodo", "Estado", "Docente", "Rec."],
         rows,
-        max_widths=[3, 44, 12, 8, 5, 24, 4],
-        aligns=["right", "left", "left", "left", "right", "left", "right"],
+        max_widths=[3, 34, 12, 8, 5, 7, 9, 18, 4],
+        aligns=["right", "left", "left", "left", "right", "left", "left", "left", "right"],
     ))
     render.text()
-    render.text(ui.dim(f"Usa el indice o el nGruCodigo: autonoma recursos {courses[0].group_id if courses else 'GRUPO'}"))
+    filtered = args.ciclo or args.periodo or args.carrera or args.activos
+    if filtered:
+        render.text(ui.dim(
+            "Con filtros el indice es relativo: usa el nGruCodigo "
+            f"(autonoma recursos {courses[0].group_id})."
+        ))
+    else:
+        render.text(ui.dim(f"Usa el indice o el nGruCodigo: autonoma recursos {courses[0].group_id}"))
     return 0
 
 
