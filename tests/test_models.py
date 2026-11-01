@@ -186,7 +186,7 @@ class ClassSessionTests(unittest.TestCase):
 
     def test_title_uses_first_line(self) -> None:
         entry = ClassSession.from_api(self.RECORD)
-        self.assertEqual(entry.title, "Evaluacion Parcial (EP): Presentacion de prototipo XR.")
+        self.assertEqual(entry.title, "Tema de ejemplo de la sesion.")
 
     def test_date_falls_back_to_millis(self) -> None:
         record = dict(self.RECORD, fecha="")

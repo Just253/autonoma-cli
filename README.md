@@ -116,8 +116,9 @@ autonoma todo --periodo 209901 --seco
 - `--activos` deja solo los cursos con `EstadoCurso = 1`.
 
 Filtran lo que devuelve el campus, no consultan periodos históricos: si un curso
-de otro periodo no aparece, es que el campus no lo mandó. La tabla de `cursos`
-muestra Periodo y Estado justamente para que no se mezclen.
+de otro periodo no aparece, es que el campus no lo mandó (para eso está
+`autonoma historial`). La tabla de `cursos` muestra Periodo y Estado justamente
+para que no se mezclen.
 
 Con filtros, el índice de la tabla es relativo a lo filtrado; para nombrar un
 curso usa el `nGruCodigo`.
@@ -137,8 +138,8 @@ autonoma historial --json
 - `Estado` es lo que reporta el campus (`APROBADA`, `EN PROCESO`, …) y
   `Matricula` distingue la matrícula regular de la web de alumno.
 - Los cursos del historial sirven para todo igual que los actuales:
-  `autonoma curso 90000011`, `autonoma recursos 90000011` y
-  `autonoma descargar 90000011 --seco`.
+  `autonoma curso 90000001`, `autonoma recursos 90000001` y
+  `autonoma descargar 90000001 --seco`.
 - Se guarda 6 horas en la misma caché que los cursos; `--refresh` la fuerza.
 
 ### Horario y aulas
@@ -152,7 +153,7 @@ autonoma horario
 
 # Un día concreto, un rango o todo el periodo
 autonoma horario --dia 15/03/2099
-autonoma horario --desde 01/11/2026 --hasta 15/11/2026
+autonoma horario --desde 01/04/2099 --hasta 15/04/2099
 autonoma horario --todo
 
 # Solo un curso (índice, nGruCodigo o parte del nombre)
@@ -165,7 +166,7 @@ Hoy, 15/03/2099 · 1 sesion
 Martes 15/03/2099
 Hora         Curso                                           Aula                            Tipo        Ses.
 -----------  ----------------------------------------------  ------------------------------  ----------  ----
-19:30-22:30  CURSO DE EJEMPLO UNO  A-101 (Laboratorio de Ejemplo)  Presencial  08
+19:30-22:30  CURSO DE EJEMPLO UNO                            A-101 (Laboratorio de Ejemplo)  Presencial  08
 
   08 · Tema de ejemplo de la sesion.
 ```

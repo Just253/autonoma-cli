@@ -147,10 +147,10 @@ class ParserTests(unittest.TestCase):
     def test_course_filters_parse(self) -> None:
         parser = build_parser()
         args = parser.parse_args(
-            ["cursos", "--ciclo", "8", "--periodo", "209901", "--carrera", "software", "--activos"]
+            ["cursos", "--ciclo", "8", "--periodo", "209901", "--carrera", "ejemplo", "--activos"]
         )
         self.assertEqual((args.ciclo, args.periodo, args.carrera, args.activos),
-                         ("8", "209901", "software", True))
+                         ("8", "209901", "ejemplo", True))
         horario = parser.parse_args(["horario", "--ciclo", "2"])
         self.assertEqual(horario.ciclo, "2")
         self.assertFalse(horario.activos)
@@ -675,7 +675,7 @@ class ResolveAnyTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(course.period, "209802")
 
     def test_falls_back_by_name(self) -> None:
-        course = resolve_any(self.client, courses(), "motores")  # type: ignore[arg-type]
+        course = resolve_any(self.client, courses(), "historico uno")  # type: ignore[arg-type]
         self.assertEqual(course.group_id, 90000011)
 
     def test_unknown_token_still_raises(self) -> None:
@@ -709,7 +709,7 @@ class HistorialCommandTests(IsolatedHomeMixin, unittest.TestCase):
         code, out = self.run_main("historial", "--periodo", "209802")
         self.assertEqual(code, 0)
         self.assertIn("1 curso · periodo 209802", out)
-        self.assertNotIn("APPS MOVILES", out)
+        self.assertNotIn("HISTORICO DOS", out)
 
     def test_json(self) -> None:
         code, out = self.run_main("historial", "--json")
@@ -718,7 +718,7 @@ class HistorialCommandTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual([row["group_id"] for row in payload], [90000012, 90000011])
 
     def test_course_text_filter(self) -> None:
-        code, out = self.run_main("historial", "--curso", "motores")
+        code, out = self.run_main("historial", "--curso", "historico uno")
         self.assertEqual(code, 0)
         self.assertIn("90000011", out)
         self.assertNotIn("90000012", out)
