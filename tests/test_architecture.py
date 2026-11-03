@@ -163,6 +163,36 @@ class ArchitectureTests(unittest.TestCase):
                         f"{name} tiene {lines} lineas (maximo {limit}): {hint}",
                     )
 
+    def test_tests_stay_small(self) -> None:
+        """Los tests se leen por tarea: ninguno pasa de 300 lineas.
+
+        Va aparte de SIZE_RULES porque MODULES solo recorre autonoma_cli/, asi
+        que un patron ``tests/...`` nunca matchearia. Esta guardia se exime a
+        si misma: es el archivo que fija la regla.
+        """
+
+        limit = 300
+        checked = [
+            path
+            for path in sorted(Path(__file__).parent.glob("test_*.py"))
+            if path.name != Path(__file__).name
+        ]
+        self.assertTrue(
+            checked,
+            "no se encontro ningun archivo test_*.py junto a esta guardia: si los "
+            "tests se mudaron de carpeta, actualiza la ruta antes de seguir (si no, "
+            "queda ciega).",
+        )
+        for path in checked:
+            lines = len(path.read_text(encoding="utf-8").splitlines())
+            with self.subTest(test=path.name):
+                self.assertLessEqual(
+                    lines, limit,
+                    f"tests/{path.name} tiene {lines} lineas "
+                    f"(maximo {limit}): parte el archivo por dominio y deja las "
+                    "fixtures en tests/support/.",
+                )
+
     def test_cli_and_commands_do_not_print(self) -> None:
         for name in (n for n in MODULES if n == "cli.py" or is_commands(n)):
             with self.subTest(module=name):
