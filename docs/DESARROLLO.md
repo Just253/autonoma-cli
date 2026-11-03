@@ -22,10 +22,10 @@ autonoma_cli/
 │   └── …               # account, courses, history, timetable, resources, grades, download, maintenance, credenciales
 ├── config/             # rutas, io atómico, DPAPI, credenciales, settings
 ├── client.py           # login ASP.NET, cookies y WebMethods
-├── models.py           # Course, HistoryCourse, CourseGrades, AcademicSummary, recursos y horario
+├── models/             # un dominio por archivo: common, courses, resources, sessions, grades
 ├── downloader.py       # plan, descarga atómica, manifiesto y sha256
 ├── cache.py            # cache.json (cursos, horario, historial)
-├── render.py           # tablas y salida JSON
+├── render/             # un tema por archivo: text, courses, schedule, resources, downloads, grades
 ├── selectors.py        # filtros de curso, sesión, tipo y fechas
 ├── ui.py               # tablas y color
 └── errors.py           # errores tipados
@@ -36,9 +36,11 @@ autonoma_cli/
 `tests/test_architecture.py` no prueba comportamiento: fija dónde vive cada
 cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
 
-- `cli.py` ≤ 260 líneas, cada `commands/*.py` ≤ 120, cada `config/*.py` ≤ 200.
+- `cli.py` ≤ 260 líneas, cada `commands/*.py` ≤ 120, cada `config/*.py` ≤ 200,
+  `models/*.py` ≤ 250, `render/*.py` ≤ 200 y `tests/test_*.py` ≤ 300 (salvo
+  `test_architecture.py`).
 - `cli.py` y `commands/` no imprimen: usan `render` o `ui`.
-- JSON a mano solo en `cache.py`, `client.py`, `downloader.py` y `render.py`.
+- JSON a mano solo en `cache.py`, `client.py`, `downloader.py` y `render/text.py`.
 - Solo `cli.py` importa `commands`; solo `cli.py` y `__main__.py` importan
   `cli.py`.
 - Todo `run_*` recibe `client` primero y se reexporta en `commands/__init__.py`.

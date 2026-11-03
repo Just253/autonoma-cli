@@ -36,7 +36,9 @@ README ni en la skill; enlazá.
   docentes, ni aulas, ni carreras, ni periodos de la cuenta. Usá los ficticios
   (`90000001`, `209901`, `DOCENTE DE EJEMPLO`).
 - **Nunca** leer ni imprimir credenciales, cookies ni `session.cookies`.
-- `cli.py` ≤ 260 líneas; `commands/*.py` ≤ 120; `config/*.py` ≤ 200.
+- `cli.py` ≤ 260 líneas; `commands/*.py` ≤ 120; `config/*.py` ≤ 200;
+  `models/*.py` ≤ 250; `render/*.py` ≤ 200; `tests/test_*.py` ≤ 300 (salvo
+  `test_architecture.py`).
 - Un comando por archivo en `commands/`, `run_*(client, args)` y reexport en
   `commands/__init__.py`.
 - `cli.py` y `commands/` no imprimen: usan `render` o `ui`.
@@ -44,8 +46,8 @@ README ni en la skill; enlazá.
 
 ## Mapa rápido del código
 
-`cli.py` (parser) → `commands/` (un módulo por tema) → `cache`, `render`,
-`selectors`, `client`, `downloader` → `config`, `models`, `errors`, `ui`.
+`cli.py` (parser) → `commands/` (un módulo por tema) → `cache`, `render/`,
+`selectors`, `client`, `downloader` → `config`, `models/`, `errors`, `ui`.
 Detalle en [docs/DESARROLLO.md](docs/DESARROLLO.md).
 
 La skill global `autonoma-campus` vive fuera del repo
