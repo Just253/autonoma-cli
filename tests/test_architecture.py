@@ -44,6 +44,12 @@ SIZE_RULES = (
         "un tema por archivo (paths, credenciales, settings, io) en vez de "
         "engordar uno solo.",
     ),
+    (
+        r"models/.+\.py",
+        250,
+        "un dominio por archivo (common, courses, resources, sessions, grades): "
+        "common es la base y los demas no se importan entre si.",
+    ),
 )
 
 
@@ -248,9 +254,10 @@ class ArchitectureTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef) and node.name in {"strip_html", "_strip_tags"}
         }
         self.assertEqual(
-            defined, {("models.py", "strip_html")},
-            "strip_html se define una sola vez en models.py: client.py importa esa "
-            f"version y no trae su propio _strip_tags (encontrado: {sorted(defined)}).",
+            defined, {("models/common.py", "strip_html")},
+            "strip_html se define una sola vez en models/common.py: client.py "
+            "importa esa version y no trae su propio _strip_tags "
+            f"(encontrado: {sorted(defined)}).",
         )
 
     def test_only_commands_builds_the_campus_client(self) -> None:
