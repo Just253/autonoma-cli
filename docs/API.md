@@ -220,3 +220,122 @@ vacía; los datos los piden dos WebMethods que viven en otras rutas:
 - Los `nGruCodigo` del historial siguen respondiendo a
   `getInformationDetailCurso`: sílabo y recursos de periodos cerrados se pueden
   consultar y descargar.
+
+## 8. Notas y promedios
+
+Hay cuatro fuentes distintas y **no son intercambiables**:
+
+| Qué | De dónde |
+|-----|----------|
+| Criterios del periodo en curso | `getNotasAlumnoGrupo` |
+| Nota final de un curso cerrado | `HISTORIAL_CURSOS.nPromocional` (§7) |
+| Promedio acumulado y por ciclo | `Camp_Virt_Perfil.aspx/ObtenerDataAvanceCarrera` |
+| Boleta del periodo abierto | `Alu_BoletaNotas.aspx/Alu_ObtenerBoletaNotas` |
+
+### Periodo en curso: `getNotasAlumnoGrupo`
+
+`POST /Campus/Default.aspx/getNotasAlumnoGrupo` con `{nGruCodigo}`:
+
+```json
+{
+  "fechaActualizado": "02/11/2027 20:30:30",
+  "nPromTotal": "9.6",
+  "porcentaje": "67",
+  "notas": [
+    {"Criterio": "EC", "Peso": "10", "nota": "20.00", "nSesion": 4,
+     "cFechaInicio": "25/09/2027", "cFechaFin": "27/09/2027"},
+    {"Criterio": "EP", "Peso": "40", "nota": "19.00", "nSesion": 8,
+     "cFechaInicio": "23/10/2027", "cFechaFin": "25/10/2027"},
+    {"Criterio": "EF", "Peso": "50", "nota": "-", "nSesion": 16,
+     "cFechaInicio": "18/12/2027", "cFechaFin": "19/12/2027"}
+  ]
+}
+```
+
+- `nPromTotal` **no es un promedio**: es la suma de `nota × Peso/100` de los
+  criterios ya calificados (`20×0.10 + 19×0.40 = 9.6`). Mientras falte un
+  criterio con peso alto el máximo alcanzable no es 20. Llamarlo "acumulado",
+  nunca "promedio".
+- `porcentaje` es el avance del curso, no la nota.
+- Los `Peso` de los criterios suman 100 por curso.
+- `nota` es texto con punto decimal (`"12.50"`) o `"-"` si no está calificada.
+- `Criterio` viene como código corto (`EC`, `EP`, `EF`).
+- Solo responde para grupos del periodo abierto. En un grupo de periodo cerrado
+  devuelve `nPromTotal: "0"`, `porcentaje: "0"` y `notas: []`: no sirve como
+  fuente histórica.
+
+### Periodos cerrados: `nPromocional`
+
+Cada fila de `HISTORIAL_CURSOS` (ver §7) trae `nPromocional`: la nota final del
+curso en escala 0–20, como entero. No requiere ninguna petición extra.
+
+- Las filas del periodo abierto también traen `nPromocional`, pero ahí es el
+  acumulado parcial redondeado, no la nota final.
+- `Nota` de la malla (abajo) también viene redondeada. El gráfico por ciclo usa
+  decimales internos que la API no expone por curso, así que recalcular un ciclo
+  puede diferir en centésimas.
+
+### Boleta del periodo: `Alu_ObtenerBoletaNotas`
+
+`POST /CampusVirtual/ua/Alumno/MisCursos/Alu_BoletaNotas.aspx/Alu_ObtenerBoletaNotas`
+con `{cPerCodigo: "", cTablas: "Boleta_notas"}`:
+
+- Devuelve `Boleta_notas`: una fila por curso del periodo con `CURSO`, `CRED`,
+  `CICLO`, `Periodo`, `ESTADO`, `NOT1` (decimal exacto, igual a `nPromTotal`) y
+  `PROMFINAL` (entero redondeado).
+- Es la boleta que muestra el campus; `getNotasAlumnoGrupo` da el detalle por
+  criterio.
+
+### Promedio oficial: `ObtenerDataAvanceCarrera`
+
+1. `POST /Campus/ua/Tablero/Perfil/Camp_Virt_Perfil.aspx/ObtenerCurrriculasActuales`
+   con `{cPerCodigo}` → cada currícula trae `nPerAluRegCodigo`.
+2. `POST /Campus/ua/Tablero/Perfil/Camp_Virt_Perfil.aspx/ObtenerDataAvanceCarrera`
+   con `{cPerCodigo: "", nPerAluRegCodigo}` y
+   `cTablas: "Malla_Curricular,Malla_Curricular_grafPromedioNotaByCiclo,Malla_Curricular_grafAvanceCarrera,Malla_Curricular_grafTipoCurso,DatosPersonales,Competencias,PuestoAcademico"`.
+
+Devuelve, entre otras tablas:
+
+| Tabla | Contenido |
+|-------|-----------|
+| `Malla_Curricular` | una fila por curso del plan: `Nota` (0–20, entero), `nPromedioAcumulado`, `perMerito`, `TotalCreditos`, `TotalCursos`, `Periodo`, `nCiclo`, `Estado` |
+| `grafPromedioNotaByCiclo` | `{Periodo, promedioPorCiclo}`: el gráfico de promedios por ciclo |
+| `grafAvanceCarrera` | `totalCreditos`, `totalCreditosAprobados` |
+| `DatosPersonales`, `DOMICILIO`, `EMAIL`, `Telefonos`, … | ficha del alumno |
+
+- El "PROMEDIO ACUMULADO" del tablero es `Malla_Curricular[0].nPromedioAcumulado`
+  (el mismo valor en todas las filas).
+- Equivale al promedio ponderado por créditos de los cursos con `Nota > 0` de la
+  malla **vigente**. Verificado: `Σ(Nota×créditos)/Σcréditos` coincide a dos
+  decimales con `nPromedioAcumulado`.
+- No calcularlo con `HISTORIAL_CURSOS`: mezcla la currícula vigente con las no
+  vigentes y da otro número.
+- `perMerito` es el orden de mérito del alumno.
+
+## 9. Secciones del menú
+
+Rutas de las secciones que el campus muestra en la barra superior. Sirven para
+saber dónde vive cada función antes de agregar un comando.
+
+| Menú | Ruta |
+|------|------|
+| Mi tablero | `POST /Campus/ua/Tablero/Perfil/Camp_Virt_Perfil.aspx` |
+| Mis cursos · actuales | `Alu_CursosActuales.aspx` (`Alu_ObtenerCursosActuales`) |
+| Mis cursos · historial | ver §7 |
+| Mis cursos · autoformativos | `POST /Campus/ua/ServiciosUniversitarios/CursosAutoformativos/Camp_Virt_CursosAutoformativos.aspx` |
+| Sesiones en línea · grabaciones | Mongo `getInfoMongoCurso` con `caso: "alumno/sesionZoomGrabaciones/<cPerCodigo>/<nGruCodigo>/<nSesion>/<nPerfil>"` |
+| Horario de clases | `Alu_HorarioClase.aspx/Alu_ObtenerHorarioClase` |
+| Mis finanzas · pendientes | `MisFinanzas/Camp_Virt_PagosPendientes.aspx/Alu_ObtenerPagosPendientes` |
+| Mis finanzas · historial | `POST /Campus/ua/MisFinanzas/Camp_Virt_HistorialPagos.aspx` |
+| Mis finanzas · comprobantes | `POST /Campus/ua/MisFinanzas/Camp_Virt_ComprobantesPagos.aspx` |
+| Mis finanzas · convenio | `POST /Campus/ua/ServiciosEnLinea/BeneficioConvenio/Camp_Virt_BeneficioConvenio.aspx` |
+| Servicios universitarios · defensoría | `POST /Campus/ua/ServiciosEnLinea/DefensoriaUniversitaria/Camp_Virt_DefensoriaUniversitaria.aspx` |
+| Servicios en línea · talleres | `POST /Campus/ua/ServiciosEnLinea/Talleres/Camp_Virt_Talleres.aspx` |
+| Servicios en línea · rezagado | `POST /Campus/ua/ServiciosEnLinea/ExamenRezagado/Camp_Virt_ExamenRezagado.aspx` |
+| Servicios en línea · carné | `ServiciosAcademicos/CarneUniversitario/Camp_Virt_RequisitosCarneUniversitario.aspx` |
+| Servicios en línea · trámites | `queryBBDD` (§ del plan de datos académicos) |
+
+Las demás secciones (biblioteca, portal de empleabilidad, cartas de
+presentación, laboratorios, tutorías) están en el menú pero todavía no se
+mapearon sus endpoints.
+
