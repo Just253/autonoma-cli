@@ -10,15 +10,18 @@ Las cookies se guardan en disco para no repetir el login en cada comando.
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
+import socket
+import ssl
 import time
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, LWPCookieJar, LoadError
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
 
 from . import __version__, config
 from .errors import (
@@ -119,6 +122,88 @@ def _as_records(data: Any) -> list[Mapping[str, Any]]:
     return []
 
 
+def _cert_mismatch(exc: BaseException) -> bool:
+    """True si el certificado verifica pero es de otro sitio.
+
+    Pasa con el balanceador del campus: AWS retira una IP del ALB y la
+    reasigna a otro cliente, asi que una resolucion cacheada puede terminar
+    en un servidor con un certificado ajeno (``Hostname mismatch``).
+    """
+
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return True
+    text = str(reason)
+    return "CERTIFICATE_VERIFY_FAILED" in text and "not valid for" in text
+
+
+def _flush_dns() -> None:
+    """Vacia la cache DNS del sistema sin pedir privilegios (best-effort)."""
+
+    try:
+        import ctypes
+
+        ctypes.WinDLL("dnsapi").DnsFlushResolverCache()
+    except Exception:  # noqa: BLE001 - fuera de Windows no existe dnsapi
+        pass
+
+
+def _resolved_ips(host: str, port: int) -> list[str]:
+    """IPs que el sistema devuelve para el campus, sin repetir."""
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return []
+    return list(dict.fromkeys(info[4][0] for info in infos))
+
+
+def _valid_ip(host: str, port: int, timeout: float) -> str:
+    """Primera IP que hoy presenta un certificado valido para ``host``."""
+
+    context = ssl.create_default_context()
+    for ip in _resolved_ips(host, port):
+        try:
+            with socket.create_connection((ip, port), timeout=timeout) as raw:
+                with context.wrap_socket(raw, server_hostname=host):
+                    return ip
+        except OSError:
+            continue
+    return ""
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPS contra una IP fija, conservando el Host y el SNI del campus."""
+
+    _pin_ip = ""
+
+    def connect(self) -> None:
+        if not self._pin_ip or self._tunnel_host:
+            return super().connect()
+        original = self._create_connection
+        self._create_connection = lambda address, timeout=None, source_address=None: (
+            socket.create_connection((self._pin_ip, address[1]), timeout, source_address)
+        )
+        try:
+            super().connect()
+        finally:
+            self._create_connection = original
+
+
+class _PinnedHTTPSHandler(HTTPSHandler):
+    """Handler que fija la IP de destino cuando hay que saltar una IP muerta."""
+
+    pin_ip = ""
+
+    def https_open(self, req: Request) -> Any:
+        pin = self.pin_ip
+
+        class Connection(_PinnedHTTPSConnection):
+            _pin_ip = pin
+
+        return self.do_open(Connection, req)
+
+
 class CampusClient:
     """Sesion autenticada contra el campus."""
 
@@ -143,7 +228,11 @@ class CampusClient:
         }
         self._cookies_file = cookies_file or str(config.cookies_path())
         self._jar = LWPCookieJar(self._cookies_file)
-        self._opener = build_opener(HTTPCookieProcessor(self._jar))
+        self._pin_handler = _PinnedHTTPSHandler()
+        self._opener = build_opener(HTTPCookieProcessor(self._jar), self._pin_handler)
+        parts = urlsplit(self.base_url)
+        self._host = parts.hostname or ""
+        self._port = parts.port or (443 if parts.scheme == "https" else 80)
         self._default_url = urljoin(self.base_url + "/", "Campus/Default.aspx")
         self._authenticated = False
         self._credentials: tuple[str, str] | None = None
@@ -166,14 +255,43 @@ class CampusClient:
             time.sleep(remaining)
         self._last_request = time.monotonic()
 
-    def _open(self, request: Request):
+    def _route_around(self) -> bool:
+        """Salta una IP que ya no es del campus y fija una que si lo es.
+
+        El ALB del campus publica TTL de 60 s: cuando rota, la IP anterior
+        puede quedar en la cache DNS y responder con el certificado de otro
+        cliente de AWS. Se elige la primera IP que hoy valide el certificado.
+        """
+
+        _flush_dns()
+        ip = _valid_ip(self._host, self._port, min(self.timeout, 5.0))
+        self._pin_handler.pin_ip = ip
+        return bool(ip)
+
+    def _open(self, request: Request, *, rerouted: bool = False):
         self._wait()
         try:
             return self._opener.open(request, timeout=self.timeout)
         except HTTPError as exc:
             raise CampusHTTPError(f"El campus respondio HTTP {exc.code}.", exc.code) from exc
         except URLError as exc:
+            if not rerouted and _cert_mismatch(exc) and self._route_around():
+                return self._open(request, rerouted=True)
+            self._pin_handler.pin_ip = ""
+            if _cert_mismatch(exc):
+                raise CampusError(
+                    "No se pudo conectar con el campus: el servidor presento el "
+                    f"certificado de otro sitio ({exc.reason}). Vuelve a intentarlo; "
+                    "si insiste, limpia la cache DNS con: ipconfig /flushdns"
+                ) from exc
             raise CampusError(f"No se pudo conectar con el campus: {exc.reason}.") from exc
+        except ssl.SSLCertVerificationError as exc:
+            if not rerouted and self._route_around():
+                return self._open(request, rerouted=True)
+            raise CampusError(
+                "No se pudo conectar con el campus: el servidor presento un "
+                f"certificado de otro sitio ({exc}). Vuelve a intentarlo."
+            ) from exc
         except TimeoutError as exc:
             raise CampusError("La conexion con el campus agoto el tiempo de espera.") from exc
 

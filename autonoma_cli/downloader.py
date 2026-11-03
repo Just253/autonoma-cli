@@ -21,6 +21,7 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .client import _cert_mismatch, _flush_dns
 from .errors import CampusError
 from .models import Course, Resource, kind_tag, safe_filename, slugify
 
@@ -202,6 +203,8 @@ def download_file(
             os.replace(partial, destination)
             return size, digest.hexdigest()
         except (HTTPError, URLError, TimeoutError, OSError, CampusError) as exc:
+            if _cert_mismatch(exc):
+                _flush_dns()
             last_error = exc
             try:
                 if partial.exists():

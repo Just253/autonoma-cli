@@ -177,6 +177,7 @@ nombre sin acentos ni mayúsculas. Se combinan entre sí y con `--curso` en
 | `error: No hay credenciales guardadas` | `autonoma credenciales --abrir` y completar el archivo, o `autonoma login`. |
 | `login: El campus rechazo las credenciales` | La clave cambió o el archivo tiene un typo. No la pidas en el chat. |
 | `campus: No se pudo conectar` | Red o VPN. Los 5xx se reintentan solos. |
+| `certificate verify failed: ... not valid for 'virtual.autonoma.edu.pe'` | El balanceador del campus rotó su IP y la caché DNS quedó vieja: la CLI ya reintenta por otra IP sola. Si insiste, `ipconfig /flushdns` (y en Portmaster, apagar el *stale cache* de DNS). |
 | `campus: El campus respondio HTTP 401` | Sesión vencida; la CLI reloguea sola. Si insiste, `autonoma login`. |
 | Todo vacío o 0 recursos | Curso sin materiales publicados o periodo cerrado; probá `--refresh`. |
 | Un recurso no baja | Puede no tener archivo (carpeta, foro, tarea sin adjunto) o el campus cambió un endpoint. |
