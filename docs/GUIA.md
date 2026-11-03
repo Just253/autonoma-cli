@@ -64,7 +64,7 @@ Hora         Curso                       Aula                            Tipo   
 - `Aula` es el campo `ambiente`: el aula física o `Sala zoom`.
 - `Tipo` distingue `Presencial`, `Sincrona` y `Asincrona`.
 - Sin opciones, los próximos 7 días. Solo entran los cursos activos; para uno
-  terminado hay que nombrarlo o pasar `--activos`.
+  terminado hay que nombrarlo (`autonoma horario 90000011`).
 
 Los ejemplos de salida de esta guía son ilustrativos: los datos reales son los
 que devuelva el campus.

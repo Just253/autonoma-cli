@@ -26,6 +26,8 @@ criterio (`name`, `teacher`, `room`).
 - **Recurso**: `title`, `kind` (número), `kind_name`, `session`,
   `session_label`, `resource_id`, `url`, `date`, `extension`, `itinerary`,
   `description`.
+- **Sesión del sílabo**: `number`, `label`, `start_date`, `end_date`, `topic`,
+  `goal`, `active`.
 - **Sesión de horario**: `group_id`, `course`, `session`, `session_label`,
   `topic`, `date` (ISO), `weekday`, `weekday_name`, `start_time`, `end_time`,
   `time_range`, `kind`, `room`, `code`, `recorded`.

@@ -3,9 +3,9 @@
 ## Cómo encaja todo
 
 ```
-cli.py  →  commands/  →  cache.py, render.py, selectors.py, client.py, downloader.py
+cli.py  →  commands/  →  cache.py, render/, selectors.py, client.py, downloader.py
                  ↓
-              config/, models.py, ui.py, errors.py
+              config/, models/, ui.py, errors.py
 ```
 
 `cli.main` construye el parser, resuelve el cliente una sola vez
@@ -40,7 +40,10 @@ cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
   `models/*.py` ≤ 250, `render/*.py` ≤ 200 y `tests/test_*.py` ≤ 300 (salvo
   `test_architecture.py`).
 - `cli.py` y `commands/` no imprimen: usan `render` o `ui`.
-- JSON a mano solo en `cache.py`, `client.py`, `downloader.py` y `render/text.py`.
+- JSON a mano solo en `cache.py`, `client.py`, `downloader.py`, `render/text.py`
+  y `config/` (cada módulo es dueño de su archivo).
+- `strip_html` se define solo en `models/common.py`; `write_private_text`, en
+  `config/io.py`.
 - Solo `cli.py` importa `commands`; solo `cli.py` y `__main__.py` importan
   `cli.py`.
 - Todo `run_*` recibe `client` primero y se reexporta en `commands/__init__.py`.

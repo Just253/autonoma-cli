@@ -4,7 +4,7 @@ Todo lo que la CLI guarda en disco vive en **un solo directorio de
 configuración**:
 
 - Windows: `%APPDATA%\autonoma-cli`
-- Linux/macOS: `~/.config/autonoma-cli`
+- Linux/macOS: `$XDG_CONFIG_HOME/autonoma-cli` (o `~/.config/autonoma-cli`)
 
 | Archivo | Qué guarda |
 |---------|------------|
@@ -65,8 +65,9 @@ sistema), `--borrar` (volver al cifrado).
 
 ## `settings.json`
 
-Opcional y editable a mano; la CLI lo lee al arrancar pero nunca lo escribe.
-Claves: `base_url`, `timeout`, `delay`, `workers`, `out_dir`, `max_sessions`.
+Opcional y editable a mano; la CLI lo lee al arrancar pero ningún comando lo
+escribe. Claves: `base_url`, `timeout`, `delay`, `workers`, `out_dir`,
+`max_sessions`.
 
 Precedencia: opciones de la línea de comandos > variables de entorno >
 `settings.json` > valores por defecto (30 s, 0.5 s, 4 descargas en paralelo,
