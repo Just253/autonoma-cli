@@ -80,6 +80,10 @@ Precedencia: opciones de la línea de comandos > variables de entorno >
   se descarta sola en vez de mezclar datos.
 - `autonoma cache` muestra el estado; `autonoma cache --borrar` la vacía.
 - `--refresh` ignora la caché en esa corrida.
+- **Las notas no se cachean**: `autonoma notas` pide los criterios y el promedio
+  oficial al campus en cada corrida, así que no hay notas viejas que borrar. El
+  catálogo de cursos e historial con el que se arma la lista sí sale de la
+  caché, y `--refresh` lo vuelve a pedir (útil para los cerrados de `--todos`).
 - Al guardar, la CLI borra los `cursos.json` y `horario.json` de versiones
   anteriores.
 

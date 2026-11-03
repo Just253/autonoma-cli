@@ -8,6 +8,8 @@ dependencias externas: solo Python.
   recursos, y distingue los de periodos anteriores.
 - Muestra el sílabo de cada curso (sesiones, semanas, temas y logros).
 - Muestra el horario de cada sesión: fecha, hora, modalidad y **aula**.
+- Muestra notas por criterio, el histórico con nota final y el promedio acumulado
+  oficial del tablero.
 - Lista los recursos de cada sesión (archivos, tareas, evaluaciones, foros, SCORM).
 - Descarga los archivos a una estructura ordenada por curso y sesión, con
   reanudación por manifiesto y verificación sha256.

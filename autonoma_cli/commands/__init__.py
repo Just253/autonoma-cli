@@ -17,6 +17,7 @@ from .courses import run_curso, run_cursos
 from .credenciales import run_credenciales
 from .data import catalog, schedule
 from .download import run_descargar, run_todo
+from .grades import run_notas
 from .history import run_historial
 from .maintenance import run_cache
 from .resources import run_recursos
@@ -38,6 +39,7 @@ __all__ = [
     "run_horario",
     "run_login",
     "run_logout",
+    "run_notas",
     "run_recursos",
     "run_todo",
     "run_whoami",

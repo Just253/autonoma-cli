@@ -9,6 +9,7 @@ Comandos:
   curso      detalle de un curso y su silabo
   horario    fechas, horas y aulas de las sesiones
   recursos   lista los recursos de un curso (por sesion)
+  notas      notas, historico y promedio oficial
   descargar  baja los archivos de un curso
   todo       baja los archivos de todos los cursos
   cache      gestiona la cache local
@@ -169,15 +170,22 @@ def build_parser() -> argparse.ArgumentParser:
     historial.add_argument("--curso", help="Filtra por texto del nombre o nGruCodigo")
     historial.set_defaults(func=commands.run_historial)
 
-    for command in (cursos, curso, horario, recursos, descargar, todo):
+    notas = sub.add_parser("notas", help="Notas por curso, historico y promedio oficial")
+    notas.add_argument("curso", nargs="?", help="Un curso (indice, nGruCodigo o parte del nombre)")
+    notas.add_argument("--todos", action="store_true",
+                       help="Incluir periodos cerrados (solo sin CURSO)")
+    notas.add_argument("--promedio", action="store_true", help="Promedio oficial del tablero")
+    notas.set_defaults(func=commands.run_notas)
+
+    for command in (cursos, curso, horario, recursos, descargar, todo, notas):
         command.add_argument("--refresh", action="store_true", default=argparse.SUPPRESS,
                              help="Ignora la cache")  # SUPPRESS: no pisa el --refresh global
 
     for command in (login, logout, whoami, credenciales, cursos, curso, horario,
-                    recursos, descargar, todo, cache_cmd, historial):
+                    recursos, descargar, todo, cache_cmd, historial, notas):
         _add_shared_options(command)
 
-    for command in (cursos, horario, todo):
+    for command in (cursos, horario, todo, notas):
         _add_course_filters(command)
     _add_course_filters(historial, active=False)
 

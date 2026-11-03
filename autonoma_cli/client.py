@@ -31,11 +31,26 @@ from .errors import (
     ProtocolError,
     SessionExpiredError,
 )
-from .models import ClassSession, Course, Resource, SessionTopic, strip_html
+from .models import (
+    AcademicSummary,
+    ClassSession,
+    Course,
+    CourseGrades,
+    Resource,
+    SessionTopic,
+    strip_html,
+)
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
 PERFIL_ALUMNO = 13
+TABLERO_PAGE = "/Campus/ua/Tablero/Perfil/Camp_Virt_Perfil.aspx"
+# cTablas exacto del tablero (docs/API.md seccion 8): cada nombre vuelve como clave.
+TABLERO_TABLES = (
+    "Malla_Curricular,Malla_Curricular_grafPromedioNotaByCiclo,"
+    "Malla_Curricular_grafAvanceCarrera,Malla_Curricular_grafTipoCurso,"
+    "DatosPersonales,Competencias,PuestoAcademico"
+)
 
 _LOGIN_REDIRECT = re.compile(r"/Campus/Login\.aspx(?:$|[?#])", re.I)
 _FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
@@ -567,6 +582,43 @@ class CampusClient:
                     seen.add(key)
                     rows.append(row)
         return rows
+
+    def get_grades(self, group_id: int | str) -> CourseGrades:
+        """Criterios del periodo abierto (``getNotasAlumnoGrupo``)."""
+
+        data = self._call("getNotasAlumnoGrupo", {"nGruCodigo": group_id})
+        if not isinstance(data, Mapping):
+            raise ProtocolError("Las notas del curso no tienen el formato esperado.")
+        return CourseGrades.from_api(data, group_id=group_id)
+
+    def get_academic_summary(self) -> AcademicSummary:
+        """Promedio oficial del tablero (``ObtenerDataAvanceCarrera``)."""
+
+        student = self.ensure_student_code()
+        current = self._call(
+            "ObtenerCurrriculasActuales", {"cPerCodigo": student}, page=TABLERO_PAGE
+        )
+        records = _as_records(current)
+        if not records and isinstance(current, Mapping):
+            # Sin clave conocida: la primera lista de filas es la de curriculas.
+            records = [
+                item
+                for value in current.values()
+                if isinstance(value, list)
+                for item in value
+                if isinstance(item, Mapping)
+            ]
+        enrollment = records[0].get("nPerAluRegCodigo") if records else None
+        if not enrollment:
+            raise ProtocolError("El tablero no devolvio la matricula del alumno.")
+        data = self._call(
+            "ObtenerDataAvanceCarrera",
+            {"cPerCodigo": "", "nPerAluRegCodigo": enrollment, "cTablas": TABLERO_TABLES},
+            page=TABLERO_PAGE,
+        )
+        if not isinstance(data, Mapping):
+            raise ProtocolError("El avance de carrera no tiene el formato esperado.")
+        return AcademicSummary.from_api(data)
 
     def get_syllabus(self, group_id: int | str) -> list[SessionTopic]:
         data = self.get_course_detail(group_id, 0)

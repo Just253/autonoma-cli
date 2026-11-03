@@ -19,10 +19,10 @@ autonoma_cli/
 ├── commands/           # un módulo por tema: run_*(client, args)
 │   ├── base.py         # cliente, carpeta de salida, reportes
 │   ├── data.py         # cursos, horario, historial y resolución de cursos
-│   └── …               # account, courses, history, timetable, resources, download, maintenance, credenciales
+│   └── …               # account, courses, history, timetable, resources, grades, download, maintenance, credenciales
 ├── config/             # rutas, io atómico, DPAPI, credenciales, settings
 ├── client.py           # login ASP.NET, cookies y WebMethods
-├── models.py           # Course, HistoryCourse, SessionTopic, ClassSession, Resource
+├── models.py           # Course, HistoryCourse, CourseGrades, AcademicSummary, recursos y horario
 ├── downloader.py       # plan, descarga atómica, manifiesto y sha256
 ├── cache.py            # cache.json (cursos, horario, historial)
 ├── render.py           # tablas y salida JSON

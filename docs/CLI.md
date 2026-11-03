@@ -15,6 +15,7 @@ cada ejemplo del repo se pueda parsear.
 | `autonoma cursos` | Lista los cursos del periodo (alias `ls`). |
 | `autonoma curso CURSO` | Detalle del curso y su sílabo sesión por sesión. |
 | `autonoma historial` | Cursos de todos los periodos, incluidos los cerrados. |
+| `autonoma notas` | Notas por criterio, curso o periodo (`--todos`) y promedio oficial (`--promedio`). |
 | `autonoma horario` | Horario de clases con fecha, hora y aula (alias `aula`). |
 | `autonoma recursos CURSO` | Recursos de todas las sesiones (o de `--sesion N`). |
 | `autonoma descargar CURSO` | Descarga los archivos del curso (alias `download`). |
@@ -90,6 +91,31 @@ Valen antes o después del comando: `autonoma --json cursos` y
 | `--periodo AAAA0S` | Solo los cursos de ese periodo. |
 | `--carrera TEXTO` | Filtra por carrera. |
 | `--curso TEXTO` | Filtra por nombre o `nGruCodigo`. |
+
+### `notas`
+
+| Opción | Efecto |
+|--------|--------|
+| `CURSO` | Posicional opcional: detalle por criterio de ese curso. |
+| `--todos` | Añade los periodos cerrados con su nota final (`nPromocional`). |
+| `--promedio` | Añade el promedio oficial del tablero, por créditos y por ciclo. |
+| `--ciclo`, `--periodo`, `--carrera` | Igual que en `cursos`. |
+| `--activos` | Solo afecta la resolución de `CURSO`: el resumen ya muestra únicamente activos. |
+
+Sin `CURSO` y sin `--todos` muestra solo los cursos activos, con el acumulado
+del periodo y el porcentaje evaluado. El detalle por criterio necesita un curso
+del periodo abierto; si el curso es de un periodo cerrado no hay criterios y
+muestra su nota final del historial. `--promedio` se puede combinar con `CURSO`
+y con `--todos`.
+
+```powershell
+autonoma notas
+autonoma notas 1
+autonoma notas 90000001 --json
+autonoma notas --todos
+autonoma notas --promedio
+autonoma notas 1 --promedio --json
+```
 
 ### `horario`
 

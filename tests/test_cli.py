@@ -98,6 +98,7 @@ class ParserTests(unittest.TestCase):
             "descargar",
             "todo",
             "cache",
+            "notas",
         ):
             with self.subTest(command=command):
                 args = parser.parse_args([command] + (["1"] if command in {"curso", "recursos", "descargar"} else []))
@@ -127,11 +128,28 @@ class ParserTests(unittest.TestCase):
             ["todo", "--out", "salida"],
             ["cursos", "--no-color"],
             ["descargar", "1", "--seco", "--solo", "presentacion"],
+            ["notas", "--json"],
+            ["notas", "1", "--json"],
+            ["notas", "--todos", "--promedio"],
         )
         for argv in documented:
             with self.subTest(argv=argv):
                 args = parser.parse_args(argv)
                 self.assertTrue(callable(args.func))
+
+    def test_notas_flags(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(
+            ["notas", "2", "--todos", "--promedio", "--periodo", "209901", "--ciclo", "8"]
+        )
+        self.assertEqual(args.curso, "2")
+        self.assertTrue(args.todos)
+        self.assertTrue(args.promedio)
+        self.assertEqual((args.periodo, args.ciclo), ("209901", "8"))
+        self.assertFalse(args.activos)
+        self.assertFalse(args.json)
+        self.assertFalse(parser.parse_args(["notas"]).todos)
+        self.assertIsNone(parser.parse_args(["notas"]).curso)
 
     def test_global_options_work_before_and_after_the_command(self) -> None:
         parser = build_parser()

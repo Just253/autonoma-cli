@@ -137,7 +137,107 @@ descargas/
 - `manifest.json` guarda tamaño y sha256. Si el archivo existe con el mismo
   tamaño, se omite y se marca `[igual]`.
 
-## 7. Periodos anteriores
+## 7. Ver notas y promedio
+
+```powershell
+autonoma notas
+autonoma notas 1
+autonoma notas 90000001 --json
+```
+
+```
+Curso                    Periodo  Ciclo  Acumulado  Avance
+-----------------------  -------  -----  ---------  ------
+CURSO DE EJEMPLO UNO     209901       1       9.60     50%
+CURSO DE EJEMPLO DOS     209901       1          0      0%
+```
+
+`Acumulado` es la suma de `nota × peso` de los criterios ya calificados, sobre
+20. **No es un promedio**: mientras falten criterios con peso alto, el máximo
+alcanzable tampoco es 20. `Avance` es el porcentaje del curso ya evaluado, no
+la nota.
+
+El detalle por criterio, con fechas y sesión:
+
+```powershell
+autonoma notas 1
+```
+
+```
+CURSO DE EJEMPLO UNO
+  periodo 209901 · ciclo 1 · grupo 1A1-A · 4 creditos
+
+Criterio  Peso   Nota  Sesion  Desde       Hasta
+--------  ----  -----  ------  ----------  ----------
+EC          10  20.00       4  01/03/2099  03/03/2099
+EP          40  19.00       8  01/05/2099  03/05/2099
+EF          50      -      16  01/06/2099  03/06/2099
+
+Acumulado 9.6 / 20 (solo 50 % evaluado)
+Actualizado 15/03/2099 19:30:00
+```
+
+Los periodos cerrados no tienen criterios: su nota final es `nPromocional` y
+sale con `--todos`, en una segunda tabla sin repetir el periodo en curso:
+
+```powershell
+autonoma notas --todos
+```
+
+```
+Periodos cerrados
+
+Periodo  Ciclo  Curso                    Cred.  Nota
+-------  -----  -----------------------  -----  ----
+209801       1  CURSO DE EJEMPLO DOS         4    15
+```
+
+Nombrar un curso cerrado también sirve: la CLI lo busca en el historial y
+muestra la nota final en vez de criterios.
+
+```powershell
+autonoma notas 90000011
+```
+
+```
+CURSO DE EJEMPLO DOS
+  periodo 209801 · ciclo 1
+
+Nota final: 15
+Periodo cerrado: el campus no publica criterios para cursos cerrados.
+```
+
+El promedio oficial es el del tablero, no el del historial:
+
+```powershell
+autonoma notas --promedio
+autonoma notas 1 --promedio
+```
+
+```
+Promedio oficial
+
+Dato                    Valor
+----------------------  ----------------------
+Acumulado del tablero   14.35
+Calculado por creditos  14.35 (90 creditos)
+Creditos                90 de 120 aprobados
+Merito                  12
+Promedio 209901         13.50
+```
+
+- `--promedio` sale del tablero (`ObtenerDataAvanceCarrera`). No lo calcules con
+  `--todos`: el historial mezcla la currícula vigente con las anteriores y da
+  otro número.
+- Se puede combinar con `CURSO` y con `--todos`.
+- `--todos` es para la lista: con `CURSO` no cambia la salida, porque un curso
+  cerrado ya muestra su nota final.
+- Las notas **no se cachean**: los criterios y el promedio oficial se piden al
+  campus en cada corrida. El catálogo con el que se arma la lista sí sale de la
+  caché de cursos e historial, así que `--refresh` sirve para refrescar ese
+  catálogo (y los cerrados de `--todos`).
+
+## 8. Periodos anteriores
 
 ```powershell
 autonoma historial
@@ -157,7 +257,7 @@ autonoma recursos 90000011
 autonoma descargar 90000011 --seco
 ```
 
-## 8. Filtrar cursos
+## 9. Filtrar cursos
 
 ```powershell
 autonoma cursos --ciclo 8
@@ -168,7 +268,8 @@ autonoma cursos --activos
 
 `--ciclo` y `--periodo` comparan por igualdad; `--carrera` busca dentro del
 nombre sin acentos ni mayúsculas. Se combinan entre sí y con `--curso` en
-`todo`. Filtran lo que devuelve el campus: para periodos viejos, `historial`.
+`todo`. Valen en `cursos`, `horario`, `todo`, `historial` y `notas`. Filtran lo
+que devuelve el campus: para periodos viejos, `historial`.
 
 ## Errores comunes
 
@@ -182,3 +283,7 @@ nombre sin acentos ni mayúsculas. Se combinan entre sí y con `--curso` en
 | Todo vacío o 0 recursos | Curso sin materiales publicados o periodo cerrado; probá `--refresh`. |
 | Un recurso no baja | Puede no tener archivo (carpeta, foro, tarea sin adjunto) o el campus cambió un endpoint. |
 | `error: unrecognized arguments` | El flag no existe para ese comando: `autonoma <comando> --help`. |
+| `Sin criterios de evaluacion todavia.` | El curso activo no tiene criterios publicados todavía. Si es de un periodo cerrado, nombrá el curso para ver su nota final o usá `--todos`. |
+| Nota vacía (`-`) en un periodo cerrado | El campus no publicó `nPromocional` para ese curso: no hay nota final que mostrar. Revisá la boleta en el campus o reintentá más tarde. |
+| `--todos` no trae un curso cerrado | Lo dejó fuera un filtro (`--periodo`, `--ciclo`, `--carrera`) o esa currícula no está en el historial: probá `autonoma historial --curso TEXTO`. |
+| El acumulado no coincide con el promedio del tablero | Son números distintos: `Acumulado` es parcial y por curso; el oficial sale de `--promedio`. |
