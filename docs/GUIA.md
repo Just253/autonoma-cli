@@ -277,6 +277,7 @@ que devuelve el campus: para periodos viejos, `historial`.
 |---------|-----------|
 | `error: No hay credenciales guardadas` | `autonoma credenciales --abrir` y completar el archivo, o `autonoma login`. |
 | `login: El campus rechazo las credenciales` | La clave cambió o el archivo tiene un typo. No la pidas en el chat. |
+| `login: El campus acepto el usuario y la contrasena, pero exige cambiarla` | El campus obliga a rotar la clave y manda a `Campus/CambioContrasena.aspx`. Cambiala en el sitio, actualizá `credentials.txt` y repetí `autonoma login`. |
 | `campus: No se pudo conectar` | Red o VPN. Los 5xx se reintentan solos. |
 | `certificate verify failed: ... not valid for 'virtual.autonoma.edu.pe'` | El balanceador del campus rotó su IP y la caché DNS quedó vieja: la CLI ya reintenta por otra IP sola. Si insiste, `ipconfig /flushdns` (y en Portmaster, apagar el *stale cache* de DNS). |
 | `campus: El campus respondio HTTP 401` | Sesión vencida; la CLI reloguea sola. Si insiste, `autonoma login`. |

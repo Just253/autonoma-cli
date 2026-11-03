@@ -54,6 +54,9 @@ TABLERO_TABLES = (
 
 _LOGIN_REDIRECT = re.compile(r"/Campus/Login\.aspx(?:$|[?#])", re.I)
 _FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
+# El campus obliga a rotar la contrasena y manda a CambioContrasena.aspx antes
+# de dejar entrar al panel; no es un fallo de credenciales ni CAPTCHA/MFA.
+_PASSWORD_CHANGE = re.compile(r"/Campus/CambioContrasena\.aspx", re.I)
 
 
 class LoginPageParser(HTMLParser):
@@ -374,6 +377,12 @@ class CampusClient:
             raise AuthenticationError(
                 "El campus rechazo las credenciales."
                 + (f" Mensaje del campus: {detail}" if detail else "")
+            )
+        if _PASSWORD_CHANGE.search(final_url):
+            raise AuthenticationError(
+                "El campus acepto el usuario y la contrasena, pero exige cambiarla "
+                "antes de dar acceso al panel. Entra al campus, actualizala y "
+                "repite: autonoma login"
             )
         if "/Campus/Default.aspx" not in final_url and 'id="cPerCodigo"' not in body:
             raise AuthenticationError("El login no llego al panel del campus (posible CAPTCHA o MFA).")

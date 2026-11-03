@@ -8,7 +8,7 @@ from autonoma_cli.client import (
     _extract_student_code,
     unwrap,
 )
-from autonoma_cli.errors import CampusHTTPError
+from autonoma_cli.errors import AuthenticationError, CampusHTTPError
 
 LOGIN_HTML = """
 <form name="frmLogin" method="post" action="./Login.aspx" id="frmLogin">
@@ -21,6 +21,26 @@ LOGIN_HTML = """
   <input type="submit" name="btn_ingresar" value="Ingresar" id="btn_ingresar" />
 </form>
 """
+
+
+class _FakeResponse:
+    """Respuesta minima de ``_open`` para probar ``login`` sin red."""
+
+    def __init__(self, url: str, body: str) -> None:
+        self._url = url
+        self._body = body.encode("utf-8")
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def geturl(self) -> str:
+        return self._url
+
+    def read(self) -> bytes:
+        return self._body
 
 
 class LoginParserTests(unittest.TestCase):
@@ -73,6 +93,27 @@ class StudentCodeTests(unittest.TestCase):
 
     def test_missing(self) -> None:
         self.assertEqual(_extract_student_code("<html></html>"), "")
+
+
+class LoginRedirectTests(unittest.TestCase):
+    """El login distingue el cambio obligatorio de contrasena de un fallo real."""
+
+    def _login(self, final_url: str, body: str = "") -> None:
+        client = CampusClient(delay=0)
+        responses = [_FakeResponse(client.login_url, LOGIN_HTML), _FakeResponse(final_url, body)]
+        client._open = lambda request: responses.pop(0)  # type: ignore[method-assign]
+        client.login("90000001", "clave-de-ejemplo")
+
+    def test_cambio_obligatorio_de_contrasena_se_informa(self) -> None:
+        # El campus autentica y luego manda a CambioContrasena.aspx: no es CAPTCHA.
+        with self.assertRaises(AuthenticationError) as ctx:
+            self._login("https://campus-de-ejemplo.edu/Campus/CambioContrasena.aspx?r=0")
+        self.assertIn("exige cambiarla", str(ctx.exception))
+
+    def test_pagina_inesperada_sigue_avisando_captcha(self) -> None:
+        with self.assertRaises(AuthenticationError) as ctx:
+            self._login("https://campus-de-ejemplo.edu/Campus/Otra.aspx")
+        self.assertIn("CAPTCHA", str(ctx.exception))
 
 
 class SessionRetryTests(unittest.TestCase):
