@@ -21,7 +21,7 @@ MODULES = {
 }
 # Duenos legitimos de JSON, uno por formato; el resto usa cache.ensure o render.
 LOADS = {"cache.py", "client.py", "downloader.py"}
-DUMPS = LOADS | {"render.py"}
+DUMPS = LOADS | {"render/text.py"}
 GRAPH = {"cli.py", "__main__.py"}  # unicos que pueden importar cli
 
 # (patron sobre la ruta posix, maximo de lineas, que hacer si se pasa).
@@ -30,13 +30,13 @@ SIZE_RULES = (
         r"cli\.py",
         260,
         "cli.py es solo el parser y el despacho: los run_* van en commands/ y la "
-        "salida en render.py.",
+        "salida en render/.",
     ),
     (
         r"commands/.+\.py",
         120,
         "un comando por archivo: si crece, saca el plan a selectors/downloader y "
-        "la tabla a render.py.",
+        "la tabla a render/.",
     ),
     (
         r"config/.+\.py",
@@ -49,6 +49,12 @@ SIZE_RULES = (
         250,
         "un dominio por archivo (common, courses, resources, sessions, grades): "
         "common es la base y los demas no se importan entre si.",
+    ),
+    (
+        r"render/.+\.py",
+        200,
+        "un tema por archivo (text, courses, schedule, resources, downloads, "
+        "grades): el __init__ solo reexporta.",
     ),
 )
 
