@@ -11,6 +11,7 @@ configuración**:
 | `credentials.json` | Usuario y contraseña (DPAPI en Windows, `0600` en el resto). |
 | `credentials.txt` | Alternativa editable a mano, en texto plano. |
 | `session.cookies` | Cookie `ASP.NET_SessionId`. |
+| `pinned-ip.json` | Última IP del campus que validó certificado, 10 minutos. |
 | `settings.json` | Preferencias opcionales (ver abajo). |
 | `cache/cache.json` | Cursos, horario e historial, 6 horas. |
 

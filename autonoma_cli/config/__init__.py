@@ -27,6 +27,7 @@ from .paths import (
     COOKIES_FILE,
     CREDENTIALS_FILE,
     DEFAULT_BASE_URL,
+    PINNED_FILE,
     PLAIN_CREDENTIALS_FILE,
     SETTINGS_FILE,
     cache_dir,
@@ -34,6 +35,7 @@ from .paths import (
     credentials_path,
     ensure_home,
     home,
+    pinned_path,
     plain_credentials_path,
     settings_path,
 )
@@ -61,6 +63,7 @@ __all__ = [
     "CREDENTIALS_FILE",
     "PLAIN_CREDENTIALS_FILE",
     "COOKIES_FILE",
+    "PINNED_FILE",
     "SETTINGS_FILE",
     "CACHE_DIRNAME",
     "home",
@@ -68,6 +71,7 @@ __all__ = [
     "credentials_path",
     "plain_credentials_path",
     "cookies_path",
+    "pinned_path",
     "settings_path",
     "cache_dir",
     # credenciales

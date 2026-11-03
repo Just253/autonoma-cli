@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
 import ssl
+import time
 import unittest
+from unittest import mock
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request
 
+from autonoma_cli import client as client_module
+from autonoma_cli import config
 from autonoma_cli.client import CampusClient, _cert_mismatch
 from autonoma_cli.errors import CampusError
+from support.home import IsolatedHomeMixin
 
 
 class CertificateMismatchTests(unittest.TestCase):
@@ -25,8 +32,11 @@ class CertificateMismatchTests(unittest.TestCase):
         self.assertFalse(_cert_mismatch(URLError(ConnectionRefusedError(10061, "refused"))))
 
 
-class RouteAroundTests(unittest.TestCase):
+class RouteAroundTests(IsolatedHomeMixin, unittest.TestCase):
     """Ante un certificado ajeno, el cliente salta a otra IP y reintenta."""
+
+    def setUp(self) -> None:
+        self.make_home()
 
     def _client(self) -> CampusClient:
         return CampusClient(delay=0, retries=2)
@@ -66,6 +76,61 @@ class RouteAroundTests(unittest.TestCase):
         with self.assertRaises(CampusError) as raised:
             client._open(Request("https://campus.invalid/Campus/Login.aspx"))
         self.assertIn("certificado de otro sitio", str(raised.exception))
+
+
+class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
+    """La IP que valido certificado se recuerda entre corridas (cache corta)."""
+
+    def setUp(self) -> None:
+        self.make_home()
+
+    def test_la_ip_buena_se_reusa_en_la_corrida_siguiente(self) -> None:
+        with mock.patch.object(client_module, "_flush_dns"), mock.patch.object(
+            client_module, "_valid_ip", return_value="192.0.2.10"
+        ):
+            first = CampusClient(delay=0)
+            self.assertEqual(first._pin_handler.pin_ip, "")
+            self.assertTrue(first._route_around())
+
+        second = CampusClient(delay=0)
+        self.assertEqual(second._pin_handler.pin_ip, "192.0.2.10")
+
+    def test_la_ip_vencida_se_ignora(self) -> None:
+        config.pinned_path().write_text(
+            json.dumps(
+                {
+                    "host": urlsplit(config.DEFAULT_BASE_URL).hostname,
+                    "ip": "192.0.2.10",
+                    "checked_at": time.time() - client_module.PINNED_TTL - 1,
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(CampusClient(delay=0)._pin_handler.pin_ip, "")
+
+    def test_la_ip_de_otro_host_se_ignora(self) -> None:
+        client_module._save_pin("otro.example", "192.0.2.10")
+        self.assertEqual(CampusClient(delay=0)._pin_handler.pin_ip, "")
+
+    def test_una_ip_muerta_se_descarta_y_se_reintenta(self) -> None:
+        client = CampusClient(delay=0)
+        client._pin_handler.pin_ip = "192.0.2.10"
+        client_module._save_pin(client._host, "192.0.2.10")
+        calls: list[str] = []
+
+        def fake_open(request, timeout=None):  # noqa: ANN001, ANN202
+            calls.append(request.full_url)
+            if len(calls) == 1:
+                raise URLError(ConnectionRefusedError(10061, "refused"))
+            return "respuesta"
+
+        client._opener.open = fake_open  # type: ignore[method-assign]
+        self.assertEqual(
+            client._open(Request("https://campus.invalid/Campus/Login.aspx")), "respuesta"
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(client._pin_handler.pin_ip, "")
+        self.assertFalse(config.pinned_path().exists())
 
 
 if __name__ == "__main__":

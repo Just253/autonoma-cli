@@ -279,7 +279,7 @@ que devuelve el campus: para periodos viejos, `historial`.
 | `login: El campus rechazo las credenciales` | La clave cambió o el archivo tiene un typo. No la pidas en el chat. |
 | `login: El campus acepto el usuario y la contrasena, pero exige cambiarla` | El campus obliga a rotar la clave y manda a `Campus/CambioContrasena.aspx`. Cambiala en el sitio, actualizá `credentials.txt` y repetí `autonoma login`. |
 | `campus: No se pudo conectar` | Red o VPN. Los 5xx se reintentan solos. |
-| `certificate verify failed: ... not valid for 'virtual.autonoma.edu.pe'` | El balanceador del campus rotó su IP y la caché DNS quedó vieja: la CLI ya reintenta por otra IP sola. Si insiste, `ipconfig /flushdns` (y en Portmaster, apagar el *stale cache* de DNS). |
+| `certificate verify failed: ... not valid for 'virtual.autonoma.edu.pe'` | El balanceador del campus rotó su IP y la caché DNS quedó vieja: la CLI ya reintenta por otra IP sola y recuerda la última IP buena 10 minutos (`pinned-ip.json`). Si insiste, `ipconfig /flushdns` (y en Portmaster, apagar el *stale cache* de DNS). |
 | `campus: El campus respondio HTTP 401` | Sesión vencida; la CLI reloguea sola. Si insiste, `autonoma login`. |
 | Todo vacío o 0 recursos | Curso sin materiales publicados o periodo cerrado; probá `--refresh`. |
 | Un recurso no baja | Puede no tener archivo (carpeta, foro, tarea sin adjunto) o el campus cambió un endpoint. |

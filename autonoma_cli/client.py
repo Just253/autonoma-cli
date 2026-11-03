@@ -57,6 +57,9 @@ _FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
 # El campus obliga a rotar la contrasena y manda a CambioContrasena.aspx antes
 # de dejar entrar al panel; no es un fallo de credenciales ni CAPTCHA/MFA.
 _PASSWORD_CHANGE = re.compile(r"/Campus/CambioContrasena\.aspx", re.I)
+# Cuanto se reusa la ultima IP que valido certificado. El ALB del campus rota
+# en minutos: mas que esto y la IP recordada puede ser de otro cliente de AWS.
+PINNED_TTL = 600.0
 
 
 class LoginPageParser(HTMLParser):
@@ -190,6 +193,45 @@ def _valid_ip(host: str, port: int, timeout: float) -> str:
     return ""
 
 
+def _load_pin(host: str) -> str:
+    """IP validada hace menos de ``PINNED_TTL`` para ``host``, o cadena vacia."""
+
+    try:
+        payload = json.loads(config.pinned_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(payload, dict) or payload.get("host") != host:
+        return ""
+    try:
+        age = time.time() - float(payload.get("checked_at", 0))
+    except (TypeError, ValueError):
+        return ""
+    if not 0 <= age <= PINNED_TTL:
+        return ""
+    return str(payload.get("ip") or "")
+
+
+def _save_pin(host: str, ip: str) -> None:
+    """Recuerda la IP buena para que la proxima corrida no repita el salto."""
+
+    if not ip:
+        return
+    payload = json.dumps({"host": host, "ip": ip, "checked_at": time.time()})
+    path = config.pinned_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(payload, encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _drop_pin() -> None:
+    try:
+        config.pinned_path().unlink()
+    except OSError:
+        pass
+
+
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """HTTPS contra una IP fija, conservando el Host y el SNI del campus."""
 
@@ -256,6 +298,7 @@ class CampusClient:
         self._credentials: tuple[str, str] | None = None
         self._last_request = 0.0
         self.student_code = ""
+        self._pin_handler.pin_ip = _load_pin(self._host)
 
     # -- infraestructura -------------------------------------------------- #
 
@@ -278,12 +321,17 @@ class CampusClient:
 
         El ALB del campus publica TTL de 60 s: cuando rota, la IP anterior
         puede quedar en la cache DNS y responder con el certificado de otro
-        cliente de AWS. Se elige la primera IP que hoy valide el certificado.
+        cliente de AWS. Se elige la primera IP que hoy valide el certificado y
+        se guarda en la config para que la proxima corrida no repita el salto.
         """
 
         _flush_dns()
         ip = _valid_ip(self._host, self._port, min(self.timeout, 5.0))
         self._pin_handler.pin_ip = ip
+        if ip:
+            _save_pin(self._host, ip)
+        else:
+            _drop_pin()
         return bool(ip)
 
     def _open(self, request: Request, *, rerouted: bool = False):
@@ -294,6 +342,12 @@ class CampusClient:
             raise CampusHTTPError(f"El campus respondio HTTP {exc.code}.", exc.code) from exc
         except URLError as exc:
             if not rerouted and _cert_mismatch(exc) and self._route_around():
+                return self._open(request, rerouted=True)
+            if not rerouted and self._pin_handler.pin_ip:
+                # La IP recordada dejo de responder: se descarta y se reintenta
+                # una vez sin pin en vez de fallar el comando.
+                self._pin_handler.pin_ip = ""
+                _drop_pin()
                 return self._open(request, rerouted=True)
             self._pin_handler.pin_ip = ""
             if _cert_mismatch(exc):

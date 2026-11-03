@@ -18,6 +18,7 @@ DEFAULT_BASE_URL = "https://virtual.autonoma.edu.pe"
 CREDENTIALS_FILE = "credentials.json"
 PLAIN_CREDENTIALS_FILE = "credentials.txt"
 COOKIES_FILE = "session.cookies"
+PINNED_FILE = "pinned-ip.json"
 SETTINGS_FILE = "settings.json"
 CACHE_DIRNAME = "cache"
 
@@ -62,6 +63,12 @@ def plain_credentials_path() -> Path:
 
 def cookies_path() -> Path:
     return home() / COOKIES_FILE
+
+
+def pinned_path() -> Path:
+    """Ultima IP del campus que validó certificado (cache corta)."""
+
+    return home() / PINNED_FILE
 
 
 def settings_path() -> Path:
