@@ -84,7 +84,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 834,  # 858 -> 834 al extraer net.py; solo puede bajar
+    "client.py": 732,  # 858 -> 732 al extraer net.py; solo puede bajar
     "downloader.py": 323,  # solo puede bajar
 }
 
