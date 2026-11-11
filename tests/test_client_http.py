@@ -9,10 +9,11 @@ from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import Request
 
-from autonoma_cli import client as client_module
 from autonoma_cli import config
-from autonoma_cli.client import CampusClient, _cert_mismatch
+from autonoma_cli import net as net_module
+from autonoma_cli.client import CampusClient
 from autonoma_cli.errors import CampusError
+from autonoma_cli.net import cert_mismatch
 from support.home import IsolatedHomeMixin
 
 
@@ -26,10 +27,10 @@ class CertificateMismatchTests(unittest.TestCase):
             "Hostname mismatch, certificate is not valid for "
             "'virtual.autonoma.edu.pe'. (_ssl.c:1006)",
         )
-        self.assertTrue(_cert_mismatch(URLError(error)))
+        self.assertTrue(cert_mismatch(URLError(error)))
 
     def test_connection_refused_is_not_a_mismatch(self) -> None:
-        self.assertFalse(_cert_mismatch(URLError(ConnectionRefusedError(10061, "refused"))))
+        self.assertFalse(cert_mismatch(URLError(ConnectionRefusedError(10061, "refused"))))
 
 
 class RouteAroundTests(IsolatedHomeMixin, unittest.TestCase):
@@ -85,8 +86,8 @@ class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
         self.make_home()
 
     def test_la_ip_buena_se_reusa_en_la_corrida_siguiente(self) -> None:
-        with mock.patch.object(client_module, "_flush_dns"), mock.patch.object(
-            client_module, "_valid_ip", return_value="192.0.2.10"
+        with mock.patch.object(net_module, "flush_dns"), mock.patch.object(
+            net_module, "valid_ip", return_value="192.0.2.10"
         ):
             first = CampusClient(delay=0)
             self.assertEqual(first._pin_handler.pin_ip, "")
@@ -101,7 +102,7 @@ class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
                 {
                     "host": urlsplit(config.DEFAULT_BASE_URL).hostname,
                     "ip": "192.0.2.10",
-                    "checked_at": time.time() - client_module.PINNED_TTL - 1,
+                    "checked_at": time.time() - net_module.PINNED_TTL - 1,
                 }
             ),
             encoding="utf-8",
@@ -109,13 +110,13 @@ class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(CampusClient(delay=0)._pin_handler.pin_ip, "")
 
     def test_la_ip_de_otro_host_se_ignora(self) -> None:
-        client_module._save_pin("otro.example", "192.0.2.10")
+        net_module.save_pin(config.pinned_path(), "otro.example", "192.0.2.10")
         self.assertEqual(CampusClient(delay=0)._pin_handler.pin_ip, "")
 
     def test_una_ip_muerta_se_descarta_y_se_reintenta(self) -> None:
         client = CampusClient(delay=0)
         client._pin_handler.pin_ip = "192.0.2.10"
-        client_module._save_pin(client._host, "192.0.2.10")
+        net_module.save_pin(config.pinned_path(), client._host, "192.0.2.10")
         calls: list[str] = []
 
         def fake_open(request, timeout=None):  # noqa: ANN001, ANN202

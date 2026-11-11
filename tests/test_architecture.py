@@ -20,7 +20,8 @@ MODULES = {
     if "__pycache__" not in path.parts
 }
 # Duenos legitimos de JSON, uno por formato; el resto usa cache.ensure o render.
-LOADS = {"cache.py", "client.py", "downloader.py"}
+# net.py lee y escribe pinned-ip.json, el pin de la IP que valido certificado.
+LOADS = {"cache.py", "client.py", "downloader.py", "net.py"}
 DUMPS = LOADS | {"render/text.py"}
 GRAPH = {"cli.py", "__main__.py"}  # unicos que pueden importar cli
 

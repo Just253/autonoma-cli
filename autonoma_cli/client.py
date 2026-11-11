@@ -10,10 +10,8 @@ Las cookies se guardan en disco para no repetir el login en cada comando.
 
 from __future__ import annotations
 
-import http.client
 import json
 import re
-import socket
 import ssl
 import time
 from html.parser import HTMLParser
@@ -21,9 +19,9 @@ from http.cookiejar import Cookie, LWPCookieJar, LoadError
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
-from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
-from . import __version__, config
+from . import __version__, config, net
 from .errors import (
     AuthenticationError,
     CampusError,
@@ -40,8 +38,6 @@ from .models import (
     SessionTopic,
     strip_html,
 )
-# Aliases privados que usa tests/test_client_http.py; el paquete usa net.
-from .net import cert_mismatch as _cert_mismatch, flush_dns as _flush_dns
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
@@ -59,9 +55,6 @@ _FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
 # El campus obliga a rotar la contrasena y manda a CambioContrasena.aspx antes
 # de dejar entrar al panel; no es un fallo de credenciales ni CAPTCHA/MFA.
 _PASSWORD_CHANGE = re.compile(r"/Campus/CambioContrasena\.aspx", re.I)
-# Cuanto se reusa la ultima IP que valido certificado. El ALB del campus rota
-# en minutos: mas que esto y la IP recordada puede ser de otro cliente de AWS.
-PINNED_TTL = 600.0
 
 
 class LoginPageParser(HTMLParser):
@@ -158,101 +151,6 @@ def _as_records(data: Any) -> list[Mapping[str, Any]]:
     return []
 
 
-def _resolved_ips(host: str, port: int) -> list[str]:
-    """IPs que el sistema devuelve para el campus, sin repetir."""
-
-    try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError:
-        return []
-    return list(dict.fromkeys(info[4][0] for info in infos))
-
-
-def _valid_ip(host: str, port: int, timeout: float) -> str:
-    """Primera IP que hoy presenta un certificado valido para ``host``."""
-
-    context = ssl.create_default_context()
-    for ip in _resolved_ips(host, port):
-        try:
-            with socket.create_connection((ip, port), timeout=timeout) as raw:
-                with context.wrap_socket(raw, server_hostname=host):
-                    return ip
-        except OSError:
-            continue
-    return ""
-
-
-def _load_pin(host: str) -> str:
-    """IP validada hace menos de ``PINNED_TTL`` para ``host``, o cadena vacia."""
-
-    try:
-        payload = json.loads(config.pinned_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return ""
-    if not isinstance(payload, dict) or payload.get("host") != host:
-        return ""
-    try:
-        age = time.time() - float(payload.get("checked_at", 0))
-    except (TypeError, ValueError):
-        return ""
-    if not 0 <= age <= PINNED_TTL:
-        return ""
-    return str(payload.get("ip") or "")
-
-
-def _save_pin(host: str, ip: str) -> None:
-    """Recuerda la IP buena para que la proxima corrida no repita el salto."""
-
-    if not ip:
-        return
-    payload = json.dumps({"host": host, "ip": ip, "checked_at": time.time()})
-    path = config.pinned_path()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload, encoding="utf-8")
-    except OSError:
-        pass
-
-
-def _drop_pin() -> None:
-    try:
-        config.pinned_path().unlink()
-    except OSError:
-        pass
-
-
-class _PinnedHTTPSConnection(http.client.HTTPSConnection):
-    """HTTPS contra una IP fija, conservando el Host y el SNI del campus."""
-
-    _pin_ip = ""
-
-    def connect(self) -> None:
-        if not self._pin_ip or self._tunnel_host:
-            return super().connect()
-        original = self._create_connection
-        self._create_connection = lambda address, timeout=None, source_address=None: (
-            socket.create_connection((self._pin_ip, address[1]), timeout, source_address)
-        )
-        try:
-            super().connect()
-        finally:
-            self._create_connection = original
-
-
-class _PinnedHTTPSHandler(HTTPSHandler):
-    """Handler que fija la IP de destino cuando hay que saltar una IP muerta."""
-
-    pin_ip = ""
-
-    def https_open(self, req: Request) -> Any:
-        pin = self.pin_ip
-
-        class Connection(_PinnedHTTPSConnection):
-            _pin_ip = pin
-
-        return self.do_open(Connection, req)
-
-
 class CampusClient:
     """Sesion autenticada contra el campus."""
 
@@ -277,7 +175,7 @@ class CampusClient:
         }
         self._cookies_file = cookies_file or str(config.cookies_path())
         self._jar = LWPCookieJar(self._cookies_file)
-        self._pin_handler = _PinnedHTTPSHandler()
+        self._pin_handler = net.PinnedHTTPSHandler()
         self._opener = build_opener(HTTPCookieProcessor(self._jar), self._pin_handler)
         parts = urlsplit(self.base_url)
         self._host = parts.hostname or ""
@@ -287,7 +185,7 @@ class CampusClient:
         self._credentials: tuple[str, str] | None = None
         self._last_request = 0.0
         self.student_code = ""
-        self._pin_handler.pin_ip = _load_pin(self._host)
+        self._pin_handler.pin_ip = net.load_pin(config.pinned_path(), self._host)
 
     # -- infraestructura -------------------------------------------------- #
 
@@ -314,13 +212,13 @@ class CampusClient:
         se guarda en la config para que la proxima corrida no repita el salto.
         """
 
-        _flush_dns()
-        ip = _valid_ip(self._host, self._port, min(self.timeout, 5.0))
+        net.flush_dns()
+        ip = net.valid_ip(self._host, self._port, min(self.timeout, 5.0))
         self._pin_handler.pin_ip = ip
         if ip:
-            _save_pin(self._host, ip)
+            net.save_pin(config.pinned_path(), self._host, ip)
         else:
-            _drop_pin()
+            net.drop_pin(config.pinned_path())
         return bool(ip)
 
     def _open(self, request: Request, *, rerouted: bool = False):
@@ -330,16 +228,16 @@ class CampusClient:
         except HTTPError as exc:
             raise CampusHTTPError(f"El campus respondio HTTP {exc.code}.", exc.code) from exc
         except URLError as exc:
-            if not rerouted and _cert_mismatch(exc) and self._route_around():
+            if not rerouted and net.cert_mismatch(exc) and self._route_around():
                 return self._open(request, rerouted=True)
             if not rerouted and self._pin_handler.pin_ip:
                 # La IP recordada dejo de responder: se descarta y se reintenta
                 # una vez sin pin en vez de fallar el comando.
                 self._pin_handler.pin_ip = ""
-                _drop_pin()
+                net.drop_pin(config.pinned_path())
                 return self._open(request, rerouted=True)
             self._pin_handler.pin_ip = ""
-            if _cert_mismatch(exc):
+            if net.cert_mismatch(exc):
                 raise CampusError(
                     "No se pudo conectar con el campus: el servidor presento el "
                     f"certificado de otro sitio ({exc.reason}). Vuelve a intentarlo; "
