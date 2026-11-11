@@ -44,8 +44,8 @@ class _Client(CampusClient):
 
     def __init__(self, *responses: Any) -> None:
         super().__init__(base_url=BASE, delay=0)
-        self._authenticated = True
-        self._relogin = lambda: None  # type: ignore[method-assign]
+        self._auth._authenticated = True
+        self._auth.relogin = lambda: None  # type: ignore[method-assign]
         self.responses = list(responses)
         self.attempts = 0
         self._session.send = self.send  # type: ignore[method-assign]

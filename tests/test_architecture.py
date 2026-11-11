@@ -84,7 +84,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 673,  # 858 -> 732 -> 673 al extraer net.py y session.py; solo puede bajar
+    "client.py": 503,  # 858 -> 732 -> 673 -> 503 al extraer net.py, session.py y auth/; solo puede bajar
     "downloader.py": 323,  # solo puede bajar
 }
 
@@ -111,7 +111,8 @@ ALLOWED_LAYERS = {
     "uploadform.py": frozenset({"client", "errors"}),
     "uploadcheck.py": frozenset({"errors", "ui"}),
     "downloader.py": frozenset({"models", "errors", "net"}),
-    "client.py": frozenset({"config", "models", "errors", "session"}),
+    "auth/": frozenset({"auth", "models", "errors"}),
+    "client.py": frozenset({"auth", "config", "models", "errors", "session"}),
     "session.py": frozenset({"net", "errors"}),
     "selectors.py": frozenset({"models", "errors"}),
     "cache.py": frozenset({"config"}),

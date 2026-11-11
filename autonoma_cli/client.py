@@ -11,15 +11,13 @@ Las cookies se guardan en disco para no repetir el login en cada comando.
 from __future__ import annotations
 
 import json
-import re
 import time
-from html.parser import HTMLParser
-from http.cookiejar import Cookie, LoadError
 from typing import Any, Iterable, Iterator, Mapping, Sequence
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urljoin
 from urllib.request import Request
 
 from . import __version__, config
+from .auth import AuthSession, LOGIN_REDIRECT
 from .errors import (
     AuthenticationError,
     CampusError,
@@ -34,7 +32,6 @@ from .models import (
     CourseGrades,
     Resource,
     SessionTopic,
-    strip_html,
 )
 from .session import CampusSession
 
@@ -48,54 +45,6 @@ TABLERO_TABLES = (
     "Malla_Curricular_grafAvanceCarrera,Malla_Curricular_grafTipoCurso,"
     "DatosPersonales,Competencias,PuestoAcademico"
 )
-
-_LOGIN_REDIRECT = re.compile(r"/Campus/Login\.aspx(?:$|[?#])", re.I)
-_FAILURE_TEXT = re.compile(r'id="FailureText"[^>]*>(.*?)</span>', re.I | re.S)
-# El campus obliga a rotar la contrasena y manda a CambioContrasena.aspx antes
-# de dejar entrar al panel; no es un fallo de credenciales ni CAPTCHA/MFA.
-_PASSWORD_CHANGE = re.compile(r"/Campus/CambioContrasena\.aspx", re.I)
-
-
-class LoginPageParser(HTMLParser):
-    """Extrae el action del formulario y sus campos ocultos.
-
-    El HTML del campus repite el atributo ``name`` en algunos inputs
-    (``name="txtUsuario" ... name="email-username"``). Por eso se toma la
-    PRIMERA aparicion de cada atributo y no un ``dict(attrs)``.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.action: str | None = None
-        self.hidden: dict[str, str] = {}
-        self.submit: dict[str, str] = {}
-        self._form_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        values: dict[str, str] = {}
-        for key, value in attrs:
-            if key and key not in values:
-                values[key] = value or ""
-
-        if tag == "form":
-            if self.action is None or values.get("id") == "frmLogin" or values.get("name") == "frmLogin":
-                self.action = values.get("action", "")
-            self._form_depth += 1
-            return
-
-        name = values.get("name", "").strip()
-        if tag != "input" or not name:
-            return
-
-        input_type = (values.get("type") or "text").lower()
-        if input_type == "hidden":
-            self.hidden[name] = values.get("value", "")
-        elif input_type in {"submit", "button"}:
-            self.submit[name] = values.get("value", "")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "form" and self._form_depth:
-            self._form_depth -= 1
 
 
 def unwrap(payload: Any) -> Any:
@@ -123,19 +72,6 @@ def parse_json_text(raw: str) -> Any:
         return unwrap(json.loads(raw))
     except (TypeError, ValueError):
         return raw
-
-
-def _extract_student_code(html: str) -> str:
-    patterns = (
-        r'id="cPerCodigo"[^>]*value="([^"]+)"',
-        r'id="txtcPerCodigoLog"[^>]*value="([^"]+)"',
-        r'(?:cPerCodigo|CPERCODIGO)\s*[:=]\s*["\']([^"\']+)',
-    )
-    for pattern in patterns:
-        match = re.search(pattern, html, re.I)
-        if match:
-            return match.group(1).strip()
-    return ""
 
 
 def _as_records(data: Any) -> list[Mapping[str, Any]]:
@@ -177,15 +113,17 @@ class CampusClient:
             cookies_path=cookies_file or str(config.cookies_path()),
             pinned_path=config.pinned_path(),
         )
-        self._authenticated = False
-        self._credentials: tuple[str, str] | None = None
-        self.student_code = ""
+        self._auth = AuthSession(self._session, self.login_url, self.headers)
 
     # -- infraestructura -------------------------------------------------- #
 
     @property
     def authenticated(self) -> bool:
-        return self._authenticated
+        return self._auth.authenticated
+
+    @property
+    def student_code(self) -> str:
+        return self._auth.student_code
 
     @property
     def referer(self) -> str:
@@ -210,119 +148,20 @@ class CampusClient:
         Devuelve True si hubo un login nuevo (util para informar al usuario).
         """
 
-        self._credentials = (username, password)
-        if not force_login and self.load_cookies():
-            self._authenticated = True
-            return False
-        self.login(username, password)
-        return True
+        return self._auth.authenticate(username, password, force_login=force_login)
 
     def login(self, username: str, password: str) -> None:
-        username = (username or "").strip()
-        if not username or not password:
-            raise AuthenticationError("Usuario y contrasena son obligatorios.")
-        self._credentials = (username, password)
-
-        with self._session.send(Request(self.login_url, headers=self.headers)) as response:
-            html = response.read().decode("utf-8", "replace")
-
-        parser = LoginPageParser()
-        parser.feed(html)
-        action = urljoin(self.login_url, parser.action or self.login_url)
-        data = dict(parser.hidden)
-        data["txtUsuario"] = username
-        data["txtPassword"] = password
-        if "btn_ingresar" in parser.submit:
-            data["btn_ingresar"] = parser.submit["btn_ingresar"]
-        elif parser.submit:
-            name, value = next(iter(parser.submit.items()))
-            data[name] = value
-        else:
-            data["btn_ingresar"] = "Ingresar"
-
-        request = Request(
-            action,
-            data=urlencode(data).encode("utf-8"),
-            headers={
-                **self.headers,
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Referer": self.login_url,
-            },
-            method="POST",
-        )
-        with self._session.send(request) as response:
-            final_url = response.geturl()
-            body = response.read().decode("utf-8", "replace")
-
-        if _LOGIN_REDIRECT.search(final_url):
-            match = _FAILURE_TEXT.search(body)
-            detail = strip_html(match.group(1)) if match else ""
-            raise AuthenticationError(
-                "El campus rechazo las credenciales."
-                + (f" Mensaje del campus: {detail}" if detail else "")
-            )
-        if _PASSWORD_CHANGE.search(final_url):
-            raise AuthenticationError(
-                "El campus acepto el usuario y la contrasena, pero exige cambiarla "
-                "antes de dar acceso al panel. Entra al campus, actualizala y "
-                "repite: autonoma login"
-            )
-        if "/Campus/Default.aspx" not in final_url and 'id="cPerCodigo"' not in body:
-            raise AuthenticationError("El login no llego al panel del campus (posible CAPTCHA o MFA).")
-
-        self._session.home_url = final_url
-        self.student_code = _extract_student_code(body)
-        self._authenticated = True
-        self.save_cookies()
-
-    def _relogin(self) -> None:
-        if not self._credentials:
-            raise SessionExpiredError(
-                "La sesion del campus expiro y no hay credenciales para renovarla. "
-                "Ejecuta: autonoma login"
-            )
-        username, password = self._credentials
-        self.login(username, password)
-
-    def save_cookies(self) -> None:
-        try:
-            config.ensure_home()
-            self._session.jar.save(ignore_discard=True, ignore_expires=True)
-        except (OSError, LoadError):
-            pass
-
-    def load_cookies(self) -> bool:
-        try:
-            self._session.jar.load(ignore_discard=True, ignore_expires=False)
-        except (OSError, LoadError):
-            return False
-        return any(not cookie.is_expired() for cookie in self._session.jar)
+        self._auth.login(username, password)
 
     def forget_cookies(self) -> bool:
         """Borra la cookie guardada en disco y vacia el jar en memoria."""
 
-        self._authenticated = False
-        self.student_code = ""
-        removed = False
-        try:
-            import os
-
-            if os.path.exists(self._session.cookies_path):
-                os.unlink(self._session.cookies_path)
-                removed = True
-        except OSError:
-            pass
-        self._session.jar.clear()
-        return removed
+        return self._auth.logout()
 
     def cookie_header(self) -> str:
         """Cabecera Cookie para descargas fuera de esta sesion (hilos)."""
 
-        pairs = []
-        for cookie in self._session.jar:
-            if isinstance(cookie, Cookie) and not cookie.is_expired():
-                pairs.append(f"{cookie.name}={cookie.value}")
-        return "; ".join(pairs)
+        return self._auth.cookie_header()
 
     # -- WebMethods -------------------------------------------------------- #
 
@@ -345,7 +184,7 @@ class CampusClient:
             final_url = response.geturl()
             raw = response.read().decode("utf-8", "replace")
 
-        if _LOGIN_REDIRECT.search(final_url):
+        if LOGIN_REDIRECT.search(final_url):
             raise SessionExpiredError("La sesion del campus expiro.")
         if not raw.strip():
             return None
@@ -378,21 +217,21 @@ class CampusClient:
         last_error: Exception | None = None
         for attempt in range(1, self.retries + 1):
             try:
-                if not self._authenticated:
-                    self._relogin()
+                if not self._auth.authenticated:
+                    self._auth.relogin()
                 return self._call_once(method, payload, page)
             except SessionExpiredError:
-                self._authenticated = False
+                self._auth.expire()
                 if allow_relogin:
-                    self._relogin()
+                    self._auth.relogin()
                     return self._call_once(method, payload, page)
                 raise
             except CampusHTTPError as exc:
                 if exc.status_code == 401:
                     # La cookie vencio sin redirigir al login: el campus responde 401.
-                    self._authenticated = False
+                    self._auth.expire()
                     if allow_relogin:
-                        self._relogin()
+                        self._auth.relogin()
                         return self._call_once(method, payload, page)
                     raise SessionExpiredError("La sesion del campus expiro.") from exc
                 if retry_transient and exc.status_code in {500, 502, 503, 504} and attempt < self.retries:
@@ -439,16 +278,7 @@ class CampusClient:
         Default.aspx; sin el, el historial responde vacio.
         """
 
-        if self.student_code:
-            return self.student_code
-        request = Request(
-            self._session.home_url,
-            headers={**self.headers, "Referer": self._session.home_url},
-        )
-        with self._session.send(request) as response:
-            html = response.read().decode("utf-8", "replace")
-        self.student_code = _extract_student_code(html)
-        return self.student_code
+        return self._auth.ensure_student_code()
 
     def get_curricula(self, kind: int = 1) -> list[Mapping[str, Any]]:
         """Curriculas del alumno (1 = carrera, 2 = extraacademicos)."""
@@ -651,23 +481,23 @@ class CampusClient:
         except CampusHTTPError as exc:
             if exc.status_code != 401:
                 raise
-        self._authenticated = False
-        self._relogin()
+        self._auth.expire()
+        self._auth.relogin()
         return self._send_upload(request)
 
     def _send_upload(self, request: Request) -> str:
         with self._session.send(request) as response:
             final_url = response.geturl()
             raw = response.read().decode("utf-8", "replace")
-        if _LOGIN_REDIRECT.search(final_url):
+        if LOGIN_REDIRECT.search(final_url):
             raise SessionExpiredError("La sesion del campus expiro.")
         return raw
 
     def describe(self) -> dict[str, Any]:
         return {
             "base_url": self.base_url,
-            "authenticated": self.authenticated,
-            "student_code": self.student_code,
+            "authenticated": self._auth.authenticated,
+            "student_code": self._auth.student_code,
             "cookies_file": self._session.cookies_path,
             "cookie_names": [cookie.name for cookie in self._session.jar],
         }

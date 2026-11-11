@@ -2,12 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from autonoma_cli.client import (
-    CampusClient,
-    LoginPageParser,
-    _extract_student_code,
-    unwrap,
-)
+from autonoma_cli.client import CampusClient, unwrap
 from autonoma_cli.errors import AuthenticationError, CampusHTTPError
 from support.home import IsolatedHomeMixin
 
@@ -46,28 +41,6 @@ class _FakeResponse:
         return self._body
 
 
-class LoginParserTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.parser = LoginPageParser()
-        self.parser.feed(LOGIN_HTML)
-
-    def test_action(self) -> None:
-        self.assertEqual(self.parser.action, "./Login.aspx")
-
-    def test_hidden_fields(self) -> None:
-        self.assertEqual(self.parser.hidden["__VIEWSTATE"], "AAA")
-        self.assertEqual(self.parser.hidden["__EVENTVALIDATION"], "BBB")
-        self.assertIn("__EVENTTARGET", self.parser.hidden)
-
-    def test_submit(self) -> None:
-        self.assertEqual(self.parser.submit["btn_ingresar"], "Ingresar")
-
-    def test_duplicate_name_attr_takes_first(self) -> None:
-        # El HTML real repite name= en los inputs; el parser debe conservar el primero.
-        self.assertNotIn("email-username", self.parser.hidden)
-        self.assertNotIn("email-username", self.parser.submit)
-
-
 class UnwrapTests(unittest.TestCase):
     def test_plain_dictionary(self) -> None:
         self.assertEqual(unwrap({"a": 1}), {"a": 1})
@@ -83,19 +56,6 @@ class UnwrapTests(unittest.TestCase):
 
     def test_none(self) -> None:
         self.assertIsNone(unwrap(None))
-
-
-class StudentCodeTests(unittest.TestCase):
-    def test_first_pattern(self) -> None:
-        html = '<input id="cPerCodigo" value="9000000001" />'
-        self.assertEqual(_extract_student_code(html), "9000000001")
-
-    def test_log_input(self) -> None:
-        html = '<input id="txtcPerCodigoLog" value="1234567" />'
-        self.assertEqual(_extract_student_code(html), "1234567")
-
-    def test_missing(self) -> None:
-        self.assertEqual(_extract_student_code("<html></html>"), "")
 
 
 class LoginRedirectTests(unittest.TestCase):
@@ -152,13 +112,13 @@ class HomeUrlTests(IsolatedHomeMixin, unittest.TestCase):
 class SessionRetryTests(unittest.TestCase):
     def test_http_401_relogs_in_and_retries(self) -> None:
         client = CampusClient(delay=0)
-        client._authenticated = True
+        client._auth._authenticated = True
         calls: list[str] = []
         relogins: list[bool] = []
 
         def fake_relogin() -> None:
             relogins.append(True)
-            client._authenticated = True
+            client._auth._authenticated = True
 
         def fake_once(method: str, payload: object, page: str) -> dict[str, bool]:
             calls.append(method)
@@ -166,7 +126,7 @@ class SessionRetryTests(unittest.TestCase):
                 raise CampusHTTPError("El campus respondio HTTP 401.", 401)
             return {"ok": True}
 
-        client._relogin = fake_relogin  # type: ignore[method-assign]
+        client._auth.relogin = fake_relogin  # type: ignore[method-assign]
         client._call_once = fake_once  # type: ignore[method-assign]
 
         self.assertEqual(client._call("Alu_ObtenerCursosActuales", {}), {"ok": True})
@@ -175,7 +135,7 @@ class SessionRetryTests(unittest.TestCase):
 
     def test_http_500_is_retried(self) -> None:
         client = CampusClient(delay=0, retries=2)
-        client._authenticated = True
+        client._auth._authenticated = True
         calls: list[int] = []
 
         def fake_once(method: str, payload: object, page: str) -> dict[str, bool]:
