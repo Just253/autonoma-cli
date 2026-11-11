@@ -56,6 +56,24 @@ SIZE_RULES = (
         "un tema por archivo (text, courses, schedule, resources, downloads, "
         "grades): el __init__ solo reexporta.",
     ),
+    (
+        r"uploadcheck\.py",
+        120,
+        "uploadcheck.py valida archivo y textos antes de la red: el plan y la "
+        "corrida van en uploader.py.",
+    ),
+    (
+        r"uploader\.py",
+        260,
+        "uploader.py es el plan y la corrida de una subida: el multipart, el XML "
+        "y el parseo van en uploadform.py.",
+    ),
+    (
+        r"uploadform\.py",
+        200,
+        "uploadform.py es el contrato del campus (multipart, XML y respuestas); "
+        "la validacion y la corrida van en uploader.py.",
+    ),
 )
 
 
@@ -307,6 +325,26 @@ class ArchitectureTests(unittest.TestCase):
             builders, {"client.py", "commands/base.py"},
             f"CampusClient solo se instancia en commands.client_for (lo instancian "
             f"{sorted(builders)}): el resto lo recibe como argumento.",
+        )
+
+    def test_upload_contract_lives_in_uploadform(self) -> None:
+        """El multipart y el XML de la subida se arman en un solo modulo.
+
+        Si otro modulo arma su propio formulario u otro XML, hay dos caminos
+        escribiendo en el campus con contratos distintos.
+        """
+
+        builders = {"multipart_body", "resource_xml", "task_xml"}
+        found = sorted(
+            name
+            for name in MODULES
+            for node in ast.walk(tree(name))
+            if isinstance(node, ast.FunctionDef) and node.name in builders
+        )
+        self.assertEqual(
+            set(found), {"uploadform.py"},
+            "multipart_body, resource_xml y task_xml se definen solo en "
+            f"uploadform.py, y uploader.py los llama desde ahi (encontrado: {found}).",
         )
 
     def test_subpackages_have_init(self) -> None:

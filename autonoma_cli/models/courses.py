@@ -97,6 +97,17 @@ class Course:
         ).lower()
         return token in haystack
 
+    @property
+    def upload_code(self) -> str:
+        """``cDocCodigo``: el codigo que el campus espera al registrar.
+
+        ``codigo`` es el de la asignatura; ``cDocCodigo`` puede ser otro y es el
+        que manda el navegador en ``Doc_InsertarRecurso`` y ``Alu_InsertarTarea``.
+        """
+
+        raw = self.raw or {}
+        return clean_text(raw.get("cDocCodigo") or self.code)
+
 
 @dataclass(frozen=True)
 class HistoryCourse:

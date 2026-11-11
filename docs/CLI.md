@@ -20,6 +20,7 @@ cada ejemplo del repo se pueda parsear.
 | `autonoma recursos CURSO` | Recursos de todas las sesiones (o de `--sesion N`). |
 | `autonoma descargar CURSO` | Descarga los archivos del curso (alias `download`). |
 | `autonoma todo` | Descarga los archivos de todos los cursos (alias `all`). |
+| `autonoma entregar GRUPO ARCHIVO` | Sube un archivo a una carpeta compartida o a una tarea (con `--seco` y `--confirmar`). |
 | `autonoma cache` | Ver o borrar la caché local (`--borrar`). |
 
 `CURSO` acepta el **índice** de `autonoma cursos`, el **nGruCodigo** o **parte
@@ -151,6 +152,39 @@ Sin opciones muestra los próximos 7 días.
 | `--out CARPETA` | Destino. |
 
 `todo` acepta además `--curso TEXTO` y los filtros de `cursos`.
+
+### `entregar`
+
+Es el único comando que escribe en el campus. Un archivo por corrida, sin
+borrado ni edición.
+
+| Opción | Efecto |
+|--------|--------|
+| `GRUPO` | Curso: índice de `autonoma cursos`, `nGruCodigo` o parte del nombre. |
+| `ARCHIVO` | Archivo a subir. |
+| `--carpeta N` | Destino: carpeta compartida (`nDocLinNum`). |
+| `--tarea N` | Destino: tarea (`nDocLinNum`). |
+| `--titulo TEXTO` | Obligatorio: nombre visible del recurso. |
+| `--descripcion TEXTO` | Obligatoria: el campus la pide al registrar. |
+| `--param0 TEXTO` | Solo tareas: nombre base del archivo. Sin esto se conserva el original. |
+| `--sesion N` | Solo `--carpeta`: semana donde vive la carpeta. Salta la búsqueda y sus lecturas. |
+| `--seco`, `--dry-run` | Muestra el plan y sale sin subir nada. |
+| `--confirmar` | Obligatorio para subir de verdad. |
+
+Exactamente uno de `--carpeta` / `--tarea`. Sin `--seco` y sin `--confirmar` la
+CLI no pregunta: sale con error de uso (código 2). `--seco` y `--confirmar`
+juntos también son error de uso. Una carpeta compartida solo acepta `pdf`, `rar`
+o `zip`; avisa si el archivo pasa de 5 MB, pero sube hasta 25 MB. Si el campus
+rechaza el registro, muestra el motivo, sale con código 4 y no reintenta ni
+prueba el otro destino.
+
+Sin `--sesion`, `--carpeta` mira primero la sesión activa (1 lectura) y, si la
+carpeta no está ahí, recorre las sesiones de a una hasta encontrarla. Un archivo
+inválido o un `--param0` con `--carpeta` fallan antes de pedir el catálogo.
+
+```powershell
+autonoma entregar 1 entrega.zip --tarea 209901 --titulo "ENTREGA DE EJEMPLO" --descripcion "Trabajo de ejemplo" --seco
+```
 
 ### `cache`
 

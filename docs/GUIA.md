@@ -137,7 +137,60 @@ descargas/
 - `manifest.json` guarda tamaño y sha256. Si el archivo existe con el mismo
   tamaño, se omite y se marca `[igual]`.
 
-## 7. Ver notas y promedio
+## 7. Subir la entrega de la semana
+
+`entregar` es el único comando que escribe en el campus. Primero se simula: sin
+`--confirmar` no se sube nada.
+
+```powershell
+autonoma entregar 1 entrega.zip --tarea 209901 --titulo "ENTREGA DE EJEMPLO" --descripcion "Trabajo de ejemplo" --seco
+```
+
+```
+Tarea 209901 · entrega.zip (25.0 KB)
+
+Campo        Valor
+-----------  ----------------------------------------------------------
+Curso        CURSO DE EJEMPLO UNO · 90000001
+Destino      Tarea 209901
+Archivo      entrega.zip · .zip
+Tamano       25.0 KB
+Titulo       ENTREGA DE EJEMPLO
+Descripcion  Trabajo de ejemplo
+param0       (sin param0: se conserva el nombre)
+
+Simulacion (--seco): no se subio nada. Para subir: agrega --confirmar.
+```
+
+Con el plan revisado, se confirma:
+
+```powershell
+autonoma entregar 1 entrega.zip --tarea 209901 --titulo "ENTREGA DE EJEMPLO" --descripcion "Trabajo de ejemplo" --confirmar
+```
+
+```
+[ok] Tarea 209901 · 209901_ENTREGA.zip
+  nRespTarea: 2099011
+```
+
+- Una corrida hace una subida y un registro; no hay reintentos del registro ni
+  borrado.
+- `--param0` solo vale en tareas y solo si querés cambiar el nombre base; sin
+  él se conserva el nombre del archivo original.
+- Para una carpeta compartida se usa `--carpeta N`, con `pdf`, `rar` o `zip`.
+  El widget del campus dice 5 MB, pero el servidor acepta más: la CLI avisa y
+  sube hasta 25 MB.
+- Si la carpeta rechaza el registro, el comando muestra el motivo y sale con
+  código 4; no prueba la tarea por su cuenta. Si el curso tiene tareas, la
+  alternativa es repetir la entrega con `--tarea`.
+- La carpeta sí trae su `nSesion`, así que la CLI mira primero la sesión activa
+  (una lectura) y solo recorre las demás sesiones si no está ahí. Si no aparece,
+  para en vez de inventar la semana. Con `--sesion N` se salta la búsqueda.
+- Un archivo inválido o un `--param0` con `--carpeta` fallan antes de pedir el
+  catálogo: no gastan peticiones. `--seco` y `--confirmar` juntos son error de
+  uso.
+
+## 8. Ver notas y promedio
 
 ```powershell
 autonoma notas
@@ -237,7 +290,7 @@ Promedio 209901         13.50
   caché de cursos e historial, así que `--refresh` sirve para refrescar ese
   catálogo (y los cerrados de `--todos`).
 
-## 8. Periodos anteriores
+## 9. Periodos anteriores
 
 ```powershell
 autonoma historial
@@ -257,7 +310,7 @@ autonoma recursos 90000011
 autonoma descargar 90000011 --seco
 ```
 
-## 9. Filtrar cursos
+## 10. Filtrar cursos
 
 ```powershell
 autonoma cursos --ciclo 8
@@ -288,3 +341,6 @@ que devuelve el campus: para periodos viejos, `historial`.
 | Nota vacía (`-`) en un periodo cerrado | El campus no publicó `nPromocional` para ese curso: no hay nota final que mostrar. Revisá la boleta en el campus o reintentá más tarde. |
 | `--todos` no trae un curso cerrado | Lo dejó fuera un filtro (`--periodo`, `--ciclo`, `--carrera`) o esa currícula no está en el historial: probá `autonoma historial --curso TEXTO`. |
 | El acumulado no coincide con el promedio del tablero | Son números distintos: `Acumulado` es parcial y por curso; el oficial sale de `--promedio`. |
+| `entregar: Para subir de verdad agrega --confirmar` | Falta `--confirmar` (código 2). Sin él, el comando solo simula; con `--seco` el plan se muestra igual. |
+| `entregar: El campus rechazo el registro en la carpeta (nUAEstado=0)` | El archivo quedó en `/Uploads` pero no se publicó: la carpeta no admite la entrega (fechas, cupo o tipo). Probá con `--tarea` si el curso tiene una. |
+| `entregar: No encontre la carpeta N en el curso` | El `nDocLinNum` no es una carpeta de ese curso: revisalo con `autonoma recursos <curso>`. |

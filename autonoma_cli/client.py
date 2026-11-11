@@ -18,7 +18,7 @@ import ssl
 import time
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, LWPCookieJar, LoadError
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
@@ -116,6 +116,19 @@ def unwrap(payload: Any) -> Any:
         except json.JSONDecodeError:
             return value
     return value
+
+
+def parse_json_text(raw: str) -> Any:
+    """Devuelve el JSON que trae ``raw`` y lo desenvuelve; si no es JSON, el texto.
+
+    Lo usan las subidas: ``FileUpload.ashx`` contesta el nombre guardado como
+    texto pelado, pero algunas versiones lo mandan como ``{"d": ...}``.
+    """
+
+    try:
+        return unwrap(json.loads(raw))
+    except (TypeError, ValueError):
+        return raw
 
 
 def _extract_student_code(html: str) -> str:
@@ -535,7 +548,17 @@ class CampusClient:
         *,
         page: str = "/Campus/Default.aspx",
         allow_relogin: bool = True,
+        retry_transient: bool = True,
     ) -> Any:
+        """Llama a un WebMethod y desenvuelve la respuesta.
+
+        ``retry_transient=False`` deja un solo intento ante 5xx o red caida:
+        los registros de entrega (``Doc_InsertarRecurso``, ``Alu_InsertarTarea``)
+        no son idempotentes y repetirlos puede duplicar el envio. Solo se
+        reintenta por autenticacion (401 o sesion vencida), que no llego a
+        ejecutar el metodo.
+        """
+
         payload = payload or {}
         last_error: Exception | None = None
         for attempt in range(1, self.retries + 1):
@@ -557,13 +580,13 @@ class CampusClient:
                         self._relogin()
                         return self._call_once(method, payload, page)
                     raise SessionExpiredError("La sesion del campus expiro.") from exc
-                if exc.status_code in {500, 502, 503, 504} and attempt < self.retries:
+                if retry_transient and exc.status_code in {500, 502, 503, 504} and attempt < self.retries:
                     last_error = exc
                     time.sleep(1.5 * attempt)
                     continue
                 raise
             except CampusError as exc:
-                if isinstance(exc, (AuthenticationError, ProtocolError)):
+                if isinstance(exc, (AuthenticationError, ProtocolError)) or not retry_transient:
                     raise
                 if attempt < self.retries:
                     last_error = exc
@@ -709,6 +732,16 @@ class CampusClient:
             for item in records
         ]
 
+    def active_session_resources(self, group_id: int | str) -> list[Resource]:
+        """Recursos de la sesion activa, con la lectura que ya trae el curso.
+
+        ``getInformationDetailCurso`` con ``nSesion=0`` devuelve el silabo y los
+        recursos de la semana en curso en una sola peticion. Las carpetas traen
+        su ``nSesion`` (docs/GUIA.md), asi que alcanza para no recorrer el resto.
+        """
+
+        return self.get_session_resources(group_id, 0)
+
     def iter_session_resources(
         self,
         group_id: int | str,
@@ -722,27 +755,98 @@ class CampusClient:
         viene, se prueban 1..max_sessions y se corta tras N sesiones vacias.
         """
 
-        numbers = list(sessions) if sessions else [
-            topic.number for topic in self.get_syllabus(group_id) if topic.number
-        ]
-        if not numbers:
-            numbers = list(range(1, config.load_settings().max_sessions + 1))
-            limit = stop_after_empty
-        else:
-            limit = 0
+        return list(
+            self.iter_session_resources_lazy(
+                group_id, sessions, stop_after_empty=stop_after_empty
+            )
+        )
 
-        result: list[tuple[int, list[Resource]]] = []
+    def iter_session_resources_lazy(
+        self,
+        group_id: int | str,
+        sessions: Sequence[int] | None = None,
+        *,
+        stop_after_empty: int = 2,
+    ) -> Iterator[tuple[int, list[Resource]]]:
+        """Como ``iter_session_resources`` pero pide una sesion por vez.
+
+        El consumidor puede cortar en la primera coincidencia: las sesiones que
+        faltan no se piden. Es la version que usa ``entregar`` para buscar una
+        carpeta sin recorrer el curso entero.
+        """
+
+        if sessions:
+            numbers = list(sessions)
+            limit = 0
+        else:
+            numbers = [
+                topic.number for topic in self.get_syllabus(group_id) if topic.number
+            ]
+            if numbers:
+                limit = 0
+            else:
+                numbers = list(range(1, config.load_settings().max_sessions + 1))
+                limit = stop_after_empty
+
         empty_run = 0
         for number in numbers:
-            resources = [item for item in self.get_session_resources(group_id, number) if item.kind != 0]
-            result.append((number, resources))
+            resources = [
+                item
+                for item in self.get_session_resources(group_id, number)
+                if item.kind != 0
+            ]
+            yield number, resources
             if resources:
                 empty_run = 0
             else:
                 empty_run += 1
                 if limit and empty_run >= limit:
                     break
-        return result
+
+    def upload_file(
+        self,
+        body: bytes,
+        *,
+        content_type: str,
+        page: str = "/GlobalAplication/FileUpload.ashx",
+    ) -> str:
+        """Manda un cuerpo multipart ya armado y devuelve el texto de la respuesta.
+
+        Es una sola subida: solo se repite si la sesion habia vencido y el
+        campus no llego a guardar nada (redireccion al login o HTTP 401).
+        """
+
+        url = urljoin(self.base_url + "/", page.lstrip("/"))
+        request = Request(
+            url,
+            data=body,
+            headers={
+                **self.headers,
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Content-Type": content_type,
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": self._default_url,
+            },
+            method="POST",
+        )
+        try:
+            return self._send_upload(request)
+        except SessionExpiredError:
+            pass
+        except CampusHTTPError as exc:
+            if exc.status_code != 401:
+                raise
+        self._authenticated = False
+        self._relogin()
+        return self._send_upload(request)
+
+    def _send_upload(self, request: Request) -> str:
+        with self._open(request) as response:
+            final_url = response.geturl()
+            raw = response.read().decode("utf-8", "replace")
+        if _LOGIN_REDIRECT.search(final_url):
+            raise SessionExpiredError("La sesion del campus expiro.")
+        return raw
 
     def describe(self) -> dict[str, Any]:
         return {

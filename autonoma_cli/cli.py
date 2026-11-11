@@ -12,6 +12,7 @@ Comandos:
   notas      notas, historico y promedio oficial
   descargar  baja los archivos de un curso
   todo       baja los archivos de todos los cursos
+  entregar   sube un archivo a una carpeta o tarea (--seco / --confirmar)
   cache      gestiona la cache local
 
 Aqui solo vive el parser y el despacho: cada subparser declara su funcion con
@@ -163,6 +164,25 @@ def build_parser() -> argparse.ArgumentParser:
     cache_cmd.add_argument("--borrar", action="store_true", help="Borrar los archivos de cache")
     cache_cmd.set_defaults(func=commands.run_cache, needs_client=False)
 
+    entregar = sub.add_parser("entregar", help="Subir un archivo a una carpeta o tarea")
+    entregar.add_argument("grupo", help="Curso: indice, nGruCodigo o parte del nombre")
+    entregar.add_argument("archivo", help="Archivo a subir")
+    destino = entregar.add_mutually_exclusive_group(required=True)
+    destino.add_argument("--carpeta", type=int, help="nDocLinNum de la carpeta compartida")
+    destino.add_argument("--tarea", type=int, help="nDocLinNum de la tarea")
+    entregar.add_argument("--titulo", required=True, help="Titulo visible del recurso")
+    entregar.add_argument("--descripcion", required=True, help="Descripcion del recurso")
+    entregar.add_argument("--param0", help="Nombre base del archivo (solo tareas)")
+    entregar.add_argument(
+        "--sesion",
+        type=int,
+        help="Semana de la carpeta (solo --carpeta); salta la busqueda y sus lecturas",
+    )
+    entregar.add_argument("--seco", "--dry-run", dest="seco", action="store_true",
+                          help="Mostrar el plan y no subir")
+    entregar.add_argument("--confirmar", action="store_true", help="Subir de verdad")
+    entregar.set_defaults(func=commands.run_entregar)
+
     historial = sub.add_parser(
         "historial",
         help="Cursos de todos los periodos (aprobados y en curso)",
@@ -177,12 +197,12 @@ def build_parser() -> argparse.ArgumentParser:
     notas.add_argument("--promedio", action="store_true", help="Promedio oficial del tablero")
     notas.set_defaults(func=commands.run_notas)
 
-    for command in (cursos, curso, horario, recursos, descargar, todo, notas):
+    for command in (cursos, curso, horario, recursos, descargar, todo, notas, entregar):
         command.add_argument("--refresh", action="store_true", default=argparse.SUPPRESS,
                              help="Ignora la cache")  # SUPPRESS: no pisa el --refresh global
 
     for command in (login, logout, whoami, credenciales, cursos, curso, horario,
-                    recursos, descargar, todo, cache_cmd, historial, notas):
+                    recursos, descargar, todo, cache_cmd, historial, notas, entregar):
         _add_shared_options(command)
 
     for command in (cursos, horario, todo, notas):

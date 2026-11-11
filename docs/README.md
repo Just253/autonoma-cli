@@ -8,6 +8,7 @@ otro archivo, se enlaza, no se copia.
 | Qué es la CLI, requisitos, instalación, primer uso | [README](../README.md) |
 | Un comando, un flag, un alias, un código de salida | [CLI.md](CLI.md) |
 | Un recorrido por tarea (elegir curso, horario, descargar, historial) | [GUIA.md](GUIA.md) |
+| Subir un archivo (carpeta compartida o tarea) | [GUIA.md](GUIA.md) y [API.md](API.md) §10 |
 | Credenciales, variables de entorno, `settings.json`, caché, rutas | [CONFIG.md](CONFIG.md) |
 | Forma de la salida `--json` y nombres de campos | [JSON.md](JSON.md) |
 | Endpoints, payloads, campos y trampas del campus | [API.md](API.md) |

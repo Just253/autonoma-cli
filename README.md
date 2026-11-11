@@ -1,8 +1,8 @@
 # autonoma-cli
 
-CLI para **ver los cursos** y **descargar los archivos** del Campus Virtual de la
-Universidad Autónoma del Perú desde la terminal. Sin navegador, sin clics y sin
-dependencias externas: solo Python.
+CLI para **ver los cursos**, **descargar los archivos** y **subir una entrega**
+del Campus Virtual de la Universidad Autónoma del Perú desde la terminal. Sin
+navegador, sin clics y sin dependencias externas: solo Python.
 
 - Lista tus cursos con docente, grupo, ciclo, periodo, estado y cantidad de
   recursos, y distingue los de periodos anteriores.
@@ -13,6 +13,8 @@ dependencias externas: solo Python.
 - Lista los recursos de cada sesión (archivos, tareas, evaluaciones, foros, SCORM).
 - Descarga los archivos a una estructura ordenada por curso y sesión, con
   reanudación por manifiesto y verificación sha256.
+- Sube una entrega a una carpeta compartida o a una tarea, primero en simulación
+  (`--seco`) y solo con `--confirmar`.
 - Guarda tus credenciales de forma cifrada para no escribirlas en cada comando.
 
 > Proyecto personal. Usa solo tu propia cuenta y con una cadencia razonable.

@@ -40,6 +40,7 @@ from .grades import (
     CycleAverage,
     GradeItem,
 )
+from .uploads import UploadPlan, UploadResult, UploadTarget
 
 __all__ = [
     "clean_text",
@@ -70,4 +71,7 @@ __all__ = [
     "CourseGrades",
     "CycleAverage",
     "GradeItem",
+    "UploadPlan",
+    "UploadResult",
+    "UploadTarget",
 ]

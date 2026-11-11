@@ -19,13 +19,16 @@ autonoma_cli/
 ├── commands/           # un módulo por tema: run_*(client, args)
 │   ├── base.py         # cliente, carpeta de salida, reportes
 │   ├── data.py         # cursos, horario, historial y resolución de cursos
-│   └── …               # account, courses, history, timetable, resources, grades, download, maintenance, credenciales
+│   └── …               # account, courses, history, timetable, resources, grades, download, entregar, maintenance, credenciales
 ├── config/             # rutas, io atómico, DPAPI, credenciales, settings
 ├── client.py           # login ASP.NET, cookies y WebMethods
-├── models/             # un dominio por archivo: common, courses, resources, sessions, grades
+├── models/             # un dominio por archivo: common, courses, resources, sessions, grades, uploads
 ├── downloader.py       # plan, descarga atómica, manifiesto y sha256
+├── uploader.py         # plan y corrida de una subida (una subida y un registro)
+├── uploadcheck.py      # valida archivo y textos antes de tocar la red
+├── uploadform.py       # contrato del campus: multipart, XML y respuestas
 ├── cache.py            # cache.json (cursos, horario, historial)
-├── render/             # un tema por archivo: text, courses, schedule, resources, downloads, grades
+├── render/             # un tema por archivo: text, courses, schedule, resources, downloads, grades, upload
 ├── selectors.py        # filtros de curso, sesión, tipo y fechas
 ├── ui.py               # tablas y color
 └── errors.py           # errores tipados
@@ -37,11 +40,15 @@ autonoma_cli/
 cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
 
 - `cli.py` ≤ 260 líneas, cada `commands/*.py` ≤ 120, cada `config/*.py` ≤ 200,
-  `models/*.py` ≤ 250, `render/*.py` ≤ 200 y `tests/test_*.py` ≤ 300 (salvo
+  `models/*.py` ≤ 250, `render/*.py` ≤ 200, `uploadcheck.py` ≤ 120,
+  `uploader.py` ≤ 260, `uploadform.py` ≤ 200 y `tests/test_*.py` ≤ 300 (salvo
   `test_architecture.py`).
 - `cli.py` y `commands/` no imprimen: usan `render` o `ui`.
 - JSON a mano solo en `cache.py`, `client.py`, `downloader.py`, `render/text.py`
   y `config/` (cada módulo es dueño de su archivo).
+- El multipart y el XML de la subida se arman solo en `uploadform.py`;
+  `uploadcheck.py` valida archivo y textos antes de la red y `uploader.py` hace
+  el plan y la corrida.
 - `strip_html` se define solo en `models/common.py`; `write_private_text`, en
   `config/io.py`.
 - Solo `cli.py` importa `commands`; solo `cli.py` y `__main__.py` importan

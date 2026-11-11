@@ -12,6 +12,7 @@ from .courses import print_course_header, print_syllabus
 from .schedule import print_schedule, session_count
 from .resources import resource_rows
 from .downloads import print_stats, progress
+from .upload import print_upload_plan, print_upload_result
 from .grades import (
     print_academic_summary,
     print_closed_course,
@@ -30,6 +31,8 @@ __all__ = [
     "resource_rows",
     "print_stats",
     "progress",
+    "print_upload_plan",
+    "print_upload_result",
     "print_academic_summary",
     "print_closed_course",
     "print_closed_grades",

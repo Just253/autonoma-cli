@@ -339,3 +339,86 @@ Las demás secciones (biblioteca, portal de empleabilidad, cartas de
 presentación, laboratorios, tutorías) están en el menú pero todavía no se
 mapearon sus endpoints.
 
+## 10. Subida de archivos (`entregar`)
+
+Los dos flujos suben primero el archivo a `/Uploads` y después lo registran con
+un WebMethod distinto. El contrato vive en `uploadform.py`; la corrida (una
+subida y un registro), en `uploader.py`.
+
+### 10.1 Subida común
+
+```
+POST /GlobalAplication/FileUpload.ashx
+Content-Type: multipart/form-data; boundary=…
+
+folder0=            # vacío
+file0=<bytes>       # el archivo
+param0=<nombre>     # solo tareas, opcional: cambia el nombre base
+path0=/Uploads
+```
+
+- Respuesta: el nombre con el que quedó guardado, como **texto**
+  (`209901_ENTREGA.zip`); algunas versiones contestan `{"d": ...}`.
+- Un archivo por entrega. Límite propio: 25 MB. El widget de carpeta anuncia
+  5 MB, pero es solo cliente: el servidor aceptó más de 5 MB en una pasada.
+- `param0` se usa como nombre base; omitirlo conserva el nombre original.
+
+### 10.2 Carpeta compartida
+
+1. XML `<Recursos>`: `url`, `nDocLinTipo=2`, `titulo`, `descripcion`,
+   `Accion=A1`, `nForoSesion`, `cForoPadre=0`, `nEstado=1`, `cDocCodigo`,
+   `nSubTipoMaterial=65003210`, `nCarCodigo=2`, `nDocLinGrupo=<carpeta>`,
+   `nPerRelacion=1`, `encualquiermomento=0`.
+2. `POST /CampusVirtual/ua/Docente/MisCursos/Doc_CursosActuales.aspx/Doc_InsertarRecurso`
+   con `{xml}`.
+3. Éxito: `InsertarRecursos[0].nUAEstado == 1`; el `nDocLinNum` nuevo sale del
+   mismo registro. `nUAEstado != 1` es rechazo **aunque el archivo ya esté en
+   `/Uploads`**: no hay fallback automático a tarea.
+4. Sincronización Mongo opcional (best-effort): `setCarpetaRecurso` en
+   `Alu_CursosActuales.aspx/setCarpetaRecurso` con
+   `{nDocLinNum: <carpeta>, nGruCodigo, carpetaInformation, silaboId: "",
+   sesionId: ""}`. `carpetaInformation` lleva `cDocLinUrl`, `Archivo`,
+   `cPerCodigo`, `cDocLinComentario`, `cDocLinDescripcion`, `nDocLinNum`,
+   `nDocLinGrupo`, `autor` y `fechaRegistro`. `cPerCodigo` es el código de
+   alumno y solo se lee al sincronizar; si falla, la entrega ya quedó
+   registrada y solo se avisa.
+
+`nForoSesion` es la semana donde vive la carpeta. La carpeta trae su `nSesion`
+en los recursos, así que la CLI mira primero la sesión activa (una lectura,
+`getInformationDetailCurso` con `nSesion=0`) y solo si no está ahí recorre las
+sesiones de a una, cortando en la primera coincidencia. `--sesion N` salta la
+búsqueda; si la carpeta no aparece, se detiene en vez de mandar una semana
+inventada. Coste de `--carpeta` sin `--sesion`: 1 lectura de la sesión activa
+más 1 por sesión recorrida hasta encontrarla (el catálogo de cursos aparte, con
+caché de 6 h).
+
+### 10.3 Tarea
+
+1. Multipart como en 10.1, **sin `param0`** salvo que se pida explícitamente.
+2. XML `<TAREA>`: `url`, `titulo`, `descripcion`, `cDocCodigo`,
+   `nDocLinNum=<tarea>`, `nGruCurso=<grupo>`, `Accion=A1`, `nRespTarea=0`,
+   `IDDirectory` y `cUuid` (vacíos).
+3. `POST /CampusVirtual/ua/Alumno/MisCursos/Alu_CursosActuales.aspx/Alu_InsertarTarea`
+   con `{xml}`. Éxito: respuesta **numérica > 1** (es el `nRespTarea`); `1` es
+   rechazo.
+4. El `cDocCodigo` del XML sale del campo `cDocCodigo` del curso, que puede ser
+   distinto de `codigo`/`cCurDetCod`; en tareas está confirmado contra el
+   campus, en carpetas queda pendiente de confirmar.
+5. Las tareas con antiplagio o rúbrica se registran igual, pero la CLI no
+   replica Turnitin ni adjunta la rúbrica: eso queda del lado del campus.
+
+### 10.4 Límites y pendientes
+
+- No se implementa borrado (`Accion=A2`) ni edición: un archivo por corrida.
+- `titulo` y `descripcion` se escapan con `xml.sax.saxutils.escape`.
+- Una corrida = una autenticación, una subida y un registro (más el aviso Mongo
+  opcional). Si el campus rechaza, se informa y se sale con código 4. Los
+  registros no se reintentan ante 5xx o red caída (no son idempotentes); solo
+  se repiten si la sesión venció (401), que no llegó a ejecutar el método.
+- `--carpeta` gasta 1 lectura de la sesión activa y, si la carpeta no está ahí,
+  1 por sesión recorrida; `--sesion N` evita ese recorrido.
+- Pendiente de confirmar contra el campus: qué fechas o cupos evalúa
+  `subirDocumento` cuando una carpeta responde `nUAEstado=0`, si las carpetas
+  usan el mismo `cDocCodigo` que las tareas, y si `setCarpetaRecurso` necesita
+  `silaboId`/`sesionId` con valor en alguna versión del campus.
+
