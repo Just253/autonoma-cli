@@ -76,6 +76,75 @@ SIZE_RULES = (
     ),
 )
 
+# Catch-all: ningun modulo del paquete crece sin tope. Los que ya pasaban de
+# 250 cuando se creo esta regla (S0) quedan congelados en su tamano actual:
+# solo pueden bajar. S1-S4 sacan responsabilidades y S6 baja client.py a <=300.
+MODULE_MAX = 250
+SIZE_RATCHET = {
+    "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
+    "client.py": 834,  # 858 -> 834 al sacar net.py; solo puede bajar (S6: <=300)
+    "downloader.py": 323,  # S4 lo parte en files/
+}
+
+# Deuda anterior a S0: nombres privados que un modulo le pide a otro. En S0
+# solo se arregla downloader.py (ya importa net); config/, models/ y commands/
+# quedan fuera de alcance, asi que estos pares se congelan. La guardia falla
+# ante uno nuevo y tambien si uno desaparece, para borrar la excepcion en el
+# mismo commit que la arregla.
+PRIVATE_IMPORTS_OK = frozenset({
+    ("commands/download.py", "commands.data", "_resources_of"),
+    ("commands/resources.py", "commands.data", "_resources_of"),
+    ("config/__init__.py", "config.crypto", "_blob"),
+    ("config/__init__.py", "config.crypto", "_protect"),
+    ("config/__init__.py", "config.crypto", "_unprotect"),
+    ("config/__init__.py", "config.io", "_write_private"),
+    ("config/__init__.py", "config.plain", "_parse_plain_credentials"),
+    ("config/credentials.py", "config.crypto", "_protect"),
+    ("config/credentials.py", "config.crypto", "_unprotect"),
+    ("config/credentials.py", "config.io", "_write_private"),
+    ("config/plain.py", "config.io", "_write_private"),
+    ("config/settings.py", "config.io", "_write_private"),
+    ("models/resources.py", "models.common", "_ACCENTS"),
+})
+
+# Direccion de dependencias: cada capa solo importa las capas de su lista. Una
+# clave terminada en "/" cubre la carpeta entera; el resto, un modulo exacto.
+# Un modulo sin regla hace fallar la guardia: una capa nueva no entra callada.
+ALLOWED_LAYERS = {
+    "__init__.py": frozenset(),
+    "__main__.py": frozenset({"cli"}),
+    "cli.py": frozenset({"commands", "config", "selectors", "ui", "client", "errors"}),
+    "commands/": frozenset({
+        "commands", "cache", "config", "models", "selectors", "ui", "render",
+        "client", "downloader", "errors", "uploader",
+    }),
+    "render/": frozenset({"render", "models", "ui"}),
+    "uploader.py": frozenset({
+        "client", "errors", "models", "uploadcheck", "uploadform",
+    }),
+    "uploadform.py": frozenset({"client", "errors"}),
+    "uploadcheck.py": frozenset({"errors", "ui"}),
+    "downloader.py": frozenset({"models", "errors", "net"}),
+    "client.py": frozenset({"config", "models", "errors", "net"}),
+    "selectors.py": frozenset({"models", "errors"}),
+    "cache.py": frozenset({"config"}),
+    "models/": frozenset({"models", "errors"}),
+    "config/": frozenset({"config"}),
+    "ui.py": frozenset(),
+    "net.py": frozenset(),
+    "errors.py": frozenset(),
+}
+
+# Aristas que la tabla prohibe pero que hoy existen: cada una tiene su slice de
+# salida. La guardia falla si aparece una nueva y tambien si una sigue viva
+# cuando su slice ya cerro.
+KNOWN_EDGES = {
+    ("render/downloads.py", "downloader"): "S4: human_size pasa a ui.py",
+    ("render/upload.py", "downloader"): "S4: human_size pasa a ui.py",
+    ("uploadcheck.py", "downloader"): "S4: human_size pasa a ui.py",
+    ("uploader.py", "client._call"): "S3: client.call() publico",
+}
+
 
 def is_config(name: str) -> bool:
     """True para cualquier archivo de ``config/``."""
@@ -163,6 +232,86 @@ def imports(name: str) -> set[str]:
     return found
 
 
+def layers() -> set[str]:
+    """Nombre de cada capa: primer componente de la ruta, sin ``.py``."""
+
+    return {name.split("/")[0].removesuffix(".py") for name in MODULES}
+
+
+def relative_target(name: str, node: ast.ImportFrom) -> str:
+    """Modulo destino de un ``ImportFrom`` relativo, resuelto desde ``name``."""
+
+    package = Path(name).parent.as_posix()
+    parts = [] if package == "." else package.split("/")
+    up = node.level - 1
+    if up:
+        parts = parts[:-up] if up <= len(parts) else []
+    if node.module:
+        parts += node.module.split(".")
+    return ".".join(parts)
+
+
+def imported_targets(name: str, node: ast.ImportFrom) -> list[str]:
+    """Modulos internos a los que apunta un ``ImportFrom``.
+
+    Cubre las dos formas que existen en el paquete: relativa (``from .net``) y
+    absoluta (``from autonoma_cli.net``); si la absoluta no se mirara, una capa
+    nueva podria saltarse la tabla escribiendo el nombre completo.
+    """
+
+    if node.level:
+        base = relative_target(name, node)
+        if node.module:
+            return [base]
+        return [f"{base}.{alias.name}" if base else alias.name for alias in node.names]
+    if node.module and node.module.split(".")[0] == "autonoma_cli":
+        rest = ".".join(node.module.split(".")[1:])
+        if rest:
+            return [rest]
+        return [alias.name.split(".")[0] for alias in node.names]
+    return []
+
+
+def imported_layers(name: str) -> set[str]:
+    """Capas internas que ``name`` importa."""
+
+    known = layers()
+    found: set[str] = set()
+    for node in ast.walk(tree(name)):
+        if isinstance(node, ast.ImportFrom):
+            found |= {target.split(".")[0] for target in imported_targets(name, node)}
+    return found & known
+
+
+def private_imports(name: str) -> set[tuple[str, str, str]]:
+    """``(modulo, dueno, nombre)`` de cada ``from .x import _y``."""
+
+    found: set[tuple[str, str, str]] = set()
+    for node in ast.walk(tree(name)):
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue  # ``from . import _modulo`` importa el modulo, no un nombre
+        targets = imported_targets(name, node)
+        if not targets:
+            continue
+        found |= {
+            (name, targets[0], alias.name)
+            for alias in node.names
+            if alias.name.startswith("_") and not alias.name.startswith("__")
+        }
+    return found
+
+
+def allowed_layers(name: str) -> frozenset[str] | None:
+    """Capas que ``name`` puede importar, o ``None`` si no tiene regla."""
+
+    if name in ALLOWED_LAYERS:
+        return ALLOWED_LAYERS[name]
+    for prefix, allowed in ALLOWED_LAYERS.items():
+        if prefix.endswith("/") and name.startswith(prefix):
+            return allowed
+    return None
+
+
 class ArchitectureTests(unittest.TestCase):
     def test_modules_stay_small(self) -> None:
         self.assertIn(
@@ -180,6 +329,103 @@ class ArchitectureTests(unittest.TestCase):
                         lines, limit,
                         f"{name} tiene {lines} lineas (maximo {limit}): {hint}",
                     )
+
+    def test_every_module_has_a_size_cap(self) -> None:
+        """Catch-all: hasta los modulos sin regla propia tienen tope.
+
+        Un modulo nuevo nace por debajo de 250. Los que ya lo pasaban en S0
+        quedan en SIZE_RATCHET con su tamano congelado: solo pueden bajar.
+        """
+
+        self.assertTrue(
+            MODULES,
+            "no se encontro ningun modulo en autonoma_cli/: si el paquete cambio "
+            "de lugar, actualiza PACKAGE (si no, la guardia queda ciega).",
+        )
+        stale = sorted(name for name in SIZE_RATCHET if name not in MODULES)
+        self.assertFalse(
+            stale,
+            f"SIZE_RATCHET nombra modulos que ya no existen: {stale}. Si un slice "
+            "los partio o renombro, actualiza o borra su tope.",
+        )
+        for name, path in MODULES.items():
+            limit = SIZE_RATCHET.get(name, MODULE_MAX)
+            lines = len(path.read_text(encoding="utf-8").splitlines())
+            with self.subTest(module=name):
+                self.assertLessEqual(
+                    lines, limit,
+                    f"{name} tiene {lines} lineas (maximo {limit}): un modulo nuevo "
+                    f"no pasa de {MODULE_MAX}, asi que saca una responsabilidad a "
+                    "otro archivo. Si ya existia en S0, su tope es el tamano de "
+                    "entonces y solo puede bajar; no lo subas para que entre un "
+                    "cambio (el slice lo parte).",
+                )
+
+    def test_no_new_private_imports(self) -> None:
+        """``from .x import _y`` no se agrega: el nombre privado es del dueno.
+
+        Los pares de PRIVATE_IMPORTS_OK son deuda anterior a S0, fuera del
+        alcance de ese slice (config/, models/, commands/); se congelan.
+        """
+
+        found: set[tuple[str, str, str]] = set()
+        for name in MODULES:
+            found |= private_imports(name)
+        new = sorted(found - PRIVATE_IMPORTS_OK)
+        self.assertFalse(
+            new,
+            "imports privados nuevos: "
+            + ", ".join(f"{mod} importa {key} de {owner}" for mod, owner, key in new)
+            + ". Usa la API publica del dueno (net.cert_mismatch, client.call, "
+            "ui.human_size...) o mueve la funcion al modulo que la define; si es "
+            "deuda anterior a S0, registra el par en PRIVATE_IMPORTS_OK con su slice.",
+        )
+        stale = sorted(PRIVATE_IMPORTS_OK - found)
+        self.assertFalse(
+            stale,
+            "PRIVATE_IMPORTS_OK tiene excepciones que ya no existen: "
+            + ", ".join(f"{mod} -> {owner}.{key}" for mod, owner, key in stale)
+            + ". Borralas para que el baseline solo encoja.",
+        )
+
+    def test_dependency_direction(self) -> None:
+        """Cada capa mira solo hacia abajo; las aristas viejas estan contadas."""
+
+        uncovered = sorted(name for name in MODULES if allowed_layers(name) is None)
+        self.assertFalse(
+            uncovered,
+            f"modulos sin regla de direccion: {uncovered}. Agrega la capa a "
+            "ALLOWED_LAYERS en el mismo commit que la crea; si no, la guardia "
+            "queda ciega justo donde aparece el codigo nuevo.",
+        )
+        edges: set[tuple[str, str]] = set()
+        for name in MODULES:
+            allowed = allowed_layers(name) or frozenset()
+            edges |= {(name, layer) for layer in imported_layers(name) - allowed}
+        for name in MODULES:
+            if name == "client.py":
+                continue
+            if any(
+                isinstance(node, ast.Attribute) and node.attr == "_call"
+                for node in ast.walk(tree(name))
+            ):
+                edges.add((name, "client._call"))
+        new = sorted(edges - set(KNOWN_EDGES))
+        self.assertFalse(
+            new,
+            "aristas nuevas contra la direccion: "
+            + ", ".join(f"{src} -> {dst}" for src, dst in new)
+            + ". Mira ALLOWED_LAYERS: si la capa destino es correcta, agrega la "
+            "capa a la lista; si no, mueve el codigo a su capa. client._call solo "
+            "se usa dentro de client.py (uploader pasa a client.call en S3).",
+        )
+        stale = sorted(set(KNOWN_EDGES) - edges)
+        self.assertFalse(
+            stale,
+            "KNOWN_EDGES tiene aristas que ya no existen: "
+            + ", ".join(f"{src} -> {dst}" for src, dst in stale)
+            + ". Borralas en el commit que cierra su slice.",
+        )
 
     def test_tests_stay_small(self) -> None:
         """Los tests se leen por tarea: ninguno pasa de 300 lineas.

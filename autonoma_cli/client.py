@@ -40,6 +40,8 @@ from .models import (
     SessionTopic,
     strip_html,
 )
+# Aliases privados por compatibilidad: tests y downloader ya los usaban asi.
+from .net import cert_mismatch as _cert_mismatch, flush_dns as _flush_dns
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
@@ -154,32 +156,6 @@ def _as_records(data: Any) -> list[Mapping[str, Any]]:
             if isinstance(nested, list):
                 return [item for item in nested if isinstance(item, Mapping)]
     return []
-
-
-def _cert_mismatch(exc: BaseException) -> bool:
-    """True si el certificado verifica pero es de otro sitio.
-
-    Pasa con el balanceador del campus: AWS retira una IP del ALB y la
-    reasigna a otro cliente, asi que una resolucion cacheada puede terminar
-    en un servidor con un certificado ajeno (``Hostname mismatch``).
-    """
-
-    reason = getattr(exc, "reason", exc)
-    if isinstance(reason, ssl.SSLCertVerificationError):
-        return True
-    text = str(reason)
-    return "CERTIFICATE_VERIFY_FAILED" in text and "not valid for" in text
-
-
-def _flush_dns() -> None:
-    """Vacia la cache DNS del sistema sin pedir privilegios (best-effort)."""
-
-    try:
-        import ctypes
-
-        ctypes.WinDLL("dnsapi").DnsFlushResolverCache()
-    except Exception:  # noqa: BLE001 - fuera de Windows no existe dnsapi
-        pass
 
 
 def _resolved_ips(host: str, port: int) -> list[str]:
