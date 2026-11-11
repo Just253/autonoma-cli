@@ -40,7 +40,7 @@ from .models import (
     SessionTopic,
     strip_html,
 )
-# Aliases privados por compatibilidad: tests y downloader ya los usaban asi.
+# Aliases privados que usa tests/test_client_http.py; el paquete usa net.
 from .net import cert_mismatch as _cert_mismatch, flush_dns as _flush_dns
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL

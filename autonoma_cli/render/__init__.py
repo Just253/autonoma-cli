@@ -1,8 +1,7 @@
 """Salida de la CLI: JSON y tablas en la terminal.
 
-El paquete se parte por tema; este ``__init__`` reexporta la misma API
-publica que tenia ``render.py`` para que ``from .. import render`` y
-``render.text(...)`` sigan funcionando igual.
+Cada tema vive en su archivo; este ``__init__`` reexporta la API publica
+para que ``from .. import render`` y ``render.text(...)`` sigan funcionando.
 """
 
 from __future__ import annotations

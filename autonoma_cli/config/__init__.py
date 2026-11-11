@@ -94,9 +94,9 @@ __all__ = [
     "save_settings",
 ]
 
-# Helpers internos que antes se alcanzaban como ``config._foo``: ahora tienen
-# nombre publico en su modulo y se reexportan igual. No van en ``__all__``
-# porque no son parte de la superficie estable del paquete.
+# Helpers internos con nombre publico en su modulo, reexportados para que
+# ``config._foo`` siga funcionando. No van en ``__all__`` porque no son parte
+# de la superficie estable del paquete.
 from .crypto import blob, protect, unprotect  # noqa: E402, F401
 from .io import write_private  # noqa: E402, F401
 from .plain import parse_plain_credentials  # noqa: E402, F401

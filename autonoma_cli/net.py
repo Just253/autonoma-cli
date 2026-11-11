@@ -4,7 +4,8 @@ Vive aparte para que ``downloader.py`` no importe nombres privados de
 ``client.py``: el certificado del campus puede venir de una IP ajena y la
 cache DNS del sistema puede apuntar a esa IP vieja.
 
-S1 suma aca el pin de IP y las conexiones TLS; por ahora solo estas dos.
+Hoy solo el diagnostico de certificado y la limpieza de DNS; el pin de IP
+y las conexiones TLS siguen en client.py.
 """
 
 from __future__ import annotations

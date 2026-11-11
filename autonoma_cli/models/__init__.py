@@ -4,8 +4,8 @@ La API interna devuelve muchos campos y algunos cambian de nombre entre
 versiones. Aca se elige un subconjunto estable y se guarda el resto en
 ``raw`` por si hace falta depurar.
 
-El paquete se parte por dominio; este ``__init__`` reexporta la misma API
-publica que tenia ``models.py`` para que ningun import externo cambie.
+Cada dominio vive en su archivo; este ``__init__`` reexporta la API publica
+para que ``from ..models import X`` siga funcionando.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Guardia de arquitectura: impide que vuelva la duplicacion del refactor.
+"""Guardia de arquitectura: evita que la logica se duplique entre capas.
 
 No prueba comportamiento: fija donde vive cada cosa. Si algo falla, el
 mensaje dice que hacer, no solo que un numero no cuadra.
@@ -77,19 +77,19 @@ SIZE_RULES = (
 )
 
 # Catch-all: ningun modulo del paquete crece sin tope. Los que ya pasaban de
-# 250 cuando se creo esta regla (S0) quedan congelados en su tamano actual:
-# solo pueden bajar. S1-S4 sacan responsabilidades y S6 baja client.py a <=300.
+# 250 cuando se creo esta regla quedan congelados en su tamano actual: solo
+# pueden bajar. Para partir uno grande, mueve una responsabilidad a otro
+# archivo.
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 834,  # 858 -> 834 al sacar net.py; solo puede bajar (S6: <=300)
-    "downloader.py": 323,  # S4 lo parte en files/
+    "client.py": 834,  # 858 -> 834 al extraer net.py; solo puede bajar
+    "downloader.py": 323,  # solo puede bajar
 }
 
-# Nombres privados que un modulo le pide a otro. S0.5 lo dejo en cero: el
-# nombre privado pertenece al dueno y se renombra alla, no se importa. Si
-# alguna vez hace falta una excepcion, va aca con su slice de salida y el test
-# falla si queda huerfana.
+# Nombres privados que un modulo le pide a otro. Hoy esta vacio: el nombre
+# privado pertenece al dueno y se importa desde su API publica. Si hace falta
+# una excepcion, va aca con su motivo y el test falla si queda huerfana.
 PRIVATE_IMPORTS_OK: frozenset[tuple[str, str, str]] = frozenset()
 
 # Direccion de dependencias: cada capa solo importa las capas de su lista. Una
@@ -120,14 +120,14 @@ ALLOWED_LAYERS = {
     "errors.py": frozenset(),
 }
 
-# Aristas que la tabla prohibe pero que hoy existen: cada una tiene su slice de
-# salida. La guardia falla si aparece una nueva y tambien si una sigue viva
-# cuando su slice ya cerro.
+# Aristas que la tabla prohibe pero que hoy existen. La guardia falla si
+# aparece una nueva y tambien si una de estas desaparece sin borrar su
+# excepcion.
 KNOWN_EDGES = {
-    ("render/downloads.py", "downloader"): "S4: human_size pasa a ui.py",
-    ("render/upload.py", "downloader"): "S4: human_size pasa a ui.py",
-    ("uploadcheck.py", "downloader"): "S4: human_size pasa a ui.py",
-    ("uploader.py", "client._call"): "S3: client.call() publico",
+    ("render/downloads.py", "downloader"): "human_size deberia vivir en ui.py",
+    ("render/upload.py", "downloader"): "human_size deberia vivir en ui.py",
+    ("uploadcheck.py", "downloader"): "human_size deberia vivir en ui.py",
+    ("uploader.py", "client._call"): "usar client.call() publico",
 }
 
 
@@ -318,8 +318,9 @@ class ArchitectureTests(unittest.TestCase):
     def test_every_module_has_a_size_cap(self) -> None:
         """Catch-all: hasta los modulos sin regla propia tienen tope.
 
-        Un modulo nuevo nace por debajo de 250. Los que ya lo pasaban en S0
-        quedan en SIZE_RATCHET con su tamano congelado: solo pueden bajar.
+        Un modulo nuevo nace por debajo de 250. Los que ya pasaban el maximo
+        cuando se agrego la regla quedan en SIZE_RATCHET con su tamano
+        congelado: solo pueden bajar.
         """
 
         self.assertTrue(
@@ -330,8 +331,8 @@ class ArchitectureTests(unittest.TestCase):
         stale = sorted(name for name in SIZE_RATCHET if name not in MODULES)
         self.assertFalse(
             stale,
-            f"SIZE_RATCHET nombra modulos que ya no existen: {stale}. Si un slice "
-            "los partio o renombro, actualiza o borra su tope.",
+            f"SIZE_RATCHET nombra modulos que ya no existen: {stale}. Si los "
+            "partiste o renombraste, actualiza o borra su tope.",
         )
         for name, path in MODULES.items():
             limit = SIZE_RATCHET.get(name, MODULE_MAX)
@@ -341,16 +342,17 @@ class ArchitectureTests(unittest.TestCase):
                     lines, limit,
                     f"{name} tiene {lines} lineas (maximo {limit}): un modulo nuevo "
                     f"no pasa de {MODULE_MAX}, asi que saca una responsabilidad a "
-                    "otro archivo. Si ya existia en S0, su tope es el tamano de "
-                    "entonces y solo puede bajar; no lo subas para que entre un "
-                    "cambio (el slice lo parte).",
+                    "otro archivo. Si el modulo ya tenia un tope congelado, ese "
+                    "tope solo puede bajar; no lo subas para que entre un cambio: "
+                    "mueve codigo a otro archivo.",
                 )
 
     def test_no_new_private_imports(self) -> None:
         """``from .x import _y`` no se agrega: el nombre privado es del dueno.
 
-        Los pares de PRIVATE_IMPORTS_OK son deuda anterior a S0, fuera del
-        alcance de ese slice (config/, models/, commands/); se congelan.
+        Hoy PRIVATE_IMPORTS_OK esta vacio: el paquete no importa nombres
+        privados de otro modulo. La lista existe solo para excepciones
+        justificadas y el test falla si una queda huerfana.
         """
 
         found: set[tuple[str, str, str]] = set()
@@ -363,18 +365,19 @@ class ArchitectureTests(unittest.TestCase):
             + ", ".join(f"{mod} importa {key} de {owner}" for mod, owner, key in new)
             + ". Usa la API publica del dueno (net.cert_mismatch, client.call, "
             "ui.human_size...) o mueve la funcion al modulo que la define; si es "
-            "deuda anterior a S0, registra el par en PRIVATE_IMPORTS_OK con su slice.",
+            "una excepcion justificada, registra el par en PRIVATE_IMPORTS_OK con "
+            "su motivo.",
         )
         stale = sorted(PRIVATE_IMPORTS_OK - found)
         self.assertFalse(
             stale,
             "PRIVATE_IMPORTS_OK tiene excepciones que ya no existen: "
             + ", ".join(f"{mod} -> {owner}.{key}" for mod, owner, key in stale)
-            + ". Borralas para que el baseline solo encoja.",
+            + ". Borralas: la lista de excepciones solo puede encoger.",
         )
 
     def test_dependency_direction(self) -> None:
-        """Cada capa mira solo hacia abajo; las aristas viejas estan contadas."""
+        """Cada capa mira solo hacia abajo; las excepciones estan en KNOWN_EDGES."""
 
         uncovered = sorted(name for name in MODULES if allowed_layers(name) is None)
         self.assertFalse(
@@ -402,14 +405,14 @@ class ArchitectureTests(unittest.TestCase):
             + ", ".join(f"{src} -> {dst}" for src, dst in new)
             + ". Mira ALLOWED_LAYERS: si la capa destino es correcta, agrega la "
             "capa a la lista; si no, mueve el codigo a su capa. client._call solo "
-            "se usa dentro de client.py (uploader pasa a client.call en S3).",
+            "se usa dentro de client.py; uploader deberia llamar a client.call().",
         )
         stale = sorted(set(KNOWN_EDGES) - edges)
         self.assertFalse(
             stale,
             "KNOWN_EDGES tiene aristas que ya no existen: "
             + ", ".join(f"{src} -> {dst}" for src, dst in stale)
-            + ". Borralas en el commit que cierra su slice.",
+            + ". Borralas en el mismo commit que elimina la arista.",
         )
 
     def test_tests_stay_small(self) -> None:
