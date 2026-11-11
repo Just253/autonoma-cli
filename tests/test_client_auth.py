@@ -9,6 +9,7 @@ from autonoma_cli.client import (
     unwrap,
 )
 from autonoma_cli.errors import AuthenticationError, CampusHTTPError
+from support.home import IsolatedHomeMixin
 
 LOGIN_HTML = """
 <form name="frmLogin" method="post" action="./Login.aspx" id="frmLogin">
@@ -21,6 +22,8 @@ LOGIN_HTML = """
   <input type="submit" name="btn_ingresar" value="Ingresar" id="btn_ingresar" />
 </form>
 """
+
+HOME_HTML = '<html><body><input id="cPerCodigo" value="9000000001" /></body></html>'
 
 
 class _FakeResponse:
@@ -114,6 +117,36 @@ class LoginRedirectTests(unittest.TestCase):
         with self.assertRaises(AuthenticationError) as ctx:
             self._login("https://campus-de-ejemplo.edu/Campus/Otra.aspx")
         self.assertIn("CAPTCHA", str(ctx.exception))
+
+
+class HomeUrlTests(IsolatedHomeMixin, unittest.TestCase):
+    """El login fija el referer que usan las llamadas siguientes."""
+
+    def setUp(self) -> None:
+        self.make_home()
+
+    def test_login_actualiza_el_referer_de_las_llamadas(self) -> None:
+        client = CampusClient(base_url="https://campus-de-ejemplo.edu", delay=0)
+        home = "https://campus-de-ejemplo.edu/Campus/Default.aspx"
+        responses = [
+            _FakeResponse(client.login_url, LOGIN_HTML),
+            _FakeResponse(home, HOME_HTML),
+            _FakeResponse(f"{home}/Metodo", '{"d": []}'),
+        ]
+        seen = []
+
+        def fake_send(request):
+            seen.append(request)
+            return responses.pop(0)
+
+        client._session.send = fake_send  # type: ignore[method-assign]
+        client.login("90000001", "clave-de-ejemplo")
+
+        self.assertEqual(client.student_code, "9000000001")
+        self.assertEqual(client.referer, home)
+
+        client._call_once("Metodo", {}, "/Campus/Default.aspx")
+        self.assertEqual(seen[-1].get_header("Referer"), home)
 
 
 class SessionRetryTests(unittest.TestCase):
