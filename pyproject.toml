@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autonoma-cli"
-version = "0.1.0"
+dynamic = ["version"]
 description = "CLI para ver cursos y descargar archivos del Campus Virtual de la Universidad Autonoma del Peru"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,3 +31,6 @@ Homepage = "https://github.com/Just253/autonoma-cli"
 
 [tool.setuptools.packages.find]
 include = ["autonoma_cli*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "autonoma_cli.__version__" }
