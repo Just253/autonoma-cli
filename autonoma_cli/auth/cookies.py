@@ -31,8 +31,13 @@ class CookieStore:
         """Guarda el jar en disco; si no se puede, la sesion sigue en memoria."""
 
         try:
-            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+            folder = Path(self.path).parent
+            folder.mkdir(parents=True, exist_ok=True)
             self.jar.save(ignore_discard=True, ignore_expires=True)
+            if os.name != "nt":
+                # La carpeta y el archivo se cierran como el resto de la config.
+                os.chmod(folder, 0o700)
+                os.chmod(self.path, 0o600)
         except (OSError, LoadError):
             pass
 
