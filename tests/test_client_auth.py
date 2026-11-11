@@ -24,7 +24,7 @@ LOGIN_HTML = """
 
 
 class _FakeResponse:
-    """Respuesta minima de ``_open`` para probar ``login`` sin red."""
+    """Respuesta minima de ``send`` para probar ``login`` sin red."""
 
     def __init__(self, url: str, body: str) -> None:
         self._url = url
@@ -101,7 +101,7 @@ class LoginRedirectTests(unittest.TestCase):
     def _login(self, final_url: str, body: str = "") -> None:
         client = CampusClient(delay=0)
         responses = [_FakeResponse(client.login_url, LOGIN_HTML), _FakeResponse(final_url, body)]
-        client._open = lambda request: responses.pop(0)  # type: ignore[method-assign]
+        client._session.send = lambda request: responses.pop(0)  # type: ignore[method-assign]
         client.login("90000001", "clave-de-ejemplo")
 
     def test_cambio_obligatorio_de_contrasena_se_informa(self) -> None:

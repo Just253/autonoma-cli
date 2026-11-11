@@ -40,7 +40,7 @@ class FakeResponse:
 
 
 class _Client(CampusClient):
-    """CampusClient con ``_open`` guionado y contador de intentos."""
+    """CampusClient con ``send`` guionado y contador de intentos."""
 
     def __init__(self, *responses: Any) -> None:
         super().__init__(base_url=BASE, delay=0)
@@ -48,8 +48,9 @@ class _Client(CampusClient):
         self._relogin = lambda: None  # type: ignore[method-assign]
         self.responses = list(responses)
         self.attempts = 0
+        self._session.send = self.send  # type: ignore[method-assign]
 
-    def _open(self, request: Any, *, rerouted: bool = False) -> Any:
+    def send(self, request: Any) -> Any:
         self.attempts += 1
         item = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if isinstance(item, BaseException):
@@ -72,13 +73,13 @@ class UploadFileTests(unittest.TestCase):
         client = _Client(FakeResponse(b'{"d": "209901_ENTREGA.zip"}', BASE))
         seen: dict[str, Any] = {}
 
-        def fake_open(request: Any, *, rerouted: bool = False) -> FakeResponse:
+        def fake_open(request: Any) -> FakeResponse:
             seen["type"] = request.get_header("Content-type")
             seen["body"] = request.data
             seen["url"] = request.full_url
             return FakeResponse(b'{"d": "209901_ENTREGA.zip"}', request.full_url)
 
-        client._open = fake_open  # type: ignore[method-assign]
+        client._session.send = fake_open  # type: ignore[method-assign]
         raw = client.upload_file(
             b"--BOUNDARY-EJEMPLO--\r\n",
             content_type=f"multipart/form-data; boundary={BOUNDARY}",

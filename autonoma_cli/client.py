@@ -12,16 +12,14 @@ from __future__ import annotations
 
 import json
 import re
-import ssl
 import time
 from html.parser import HTMLParser
-from http.cookiejar import Cookie, LWPCookieJar, LoadError
+from http.cookiejar import Cookie, LoadError
 from typing import Any, Iterable, Iterator, Mapping, Sequence
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin, urlsplit
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.parse import urlencode, urljoin
+from urllib.request import Request
 
-from . import __version__, config, net
+from . import __version__, config
 from .errors import (
     AuthenticationError,
     CampusError,
@@ -38,6 +36,7 @@ from .models import (
     SessionTopic,
     strip_html,
 )
+from .session import CampusSession
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
@@ -166,26 +165,21 @@ class CampusClient:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.login_url = urljoin(self.base_url + "/", "Campus/Login.aspx")
-        self.timeout = float(timeout)
-        self.delay = max(0.0, float(delay))
         self.retries = max(1, int(retries))
         self.headers = {
             "User-Agent": user_agent,
             "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
         }
-        self._cookies_file = cookies_file or str(config.cookies_path())
-        self._jar = LWPCookieJar(self._cookies_file)
-        self._pin_handler = net.PinnedHTTPSHandler()
-        self._opener = build_opener(HTTPCookieProcessor(self._jar), self._pin_handler)
-        parts = urlsplit(self.base_url)
-        self._host = parts.hostname or ""
-        self._port = parts.port or (443 if parts.scheme == "https" else 80)
-        self._default_url = urljoin(self.base_url + "/", "Campus/Default.aspx")
+        self._session = CampusSession(
+            self.base_url,
+            timeout=timeout,
+            delay=delay,
+            cookies_path=cookies_file or str(config.cookies_path()),
+            pinned_path=config.pinned_path(),
+        )
         self._authenticated = False
         self._credentials: tuple[str, str] | None = None
-        self._last_request = 0.0
         self.student_code = ""
-        self._pin_handler.pin_ip = net.load_pin(config.pinned_path(), self._host)
 
     # -- infraestructura -------------------------------------------------- #
 
@@ -195,70 +189,18 @@ class CampusClient:
 
     @property
     def referer(self) -> str:
-        return self._default_url
+        return self._session.home_url
 
-    def _wait(self) -> None:
-        remaining = self.delay - (time.monotonic() - self._last_request)
-        if remaining > 0:
-            time.sleep(remaining)
-        self._last_request = time.monotonic()
+    @property
+    def timeout(self) -> float:
+        return self._session.timeout
 
-    def _route_around(self) -> bool:
-        """Salta una IP que ya no es del campus y fija una que si lo es.
-
-        El ALB del campus publica TTL de 60 s: cuando rota, la IP anterior
-        puede quedar en la cache DNS y responder con el certificado de otro
-        cliente de AWS. Se elige la primera IP que hoy valide el certificado y
-        se guarda en la config para que la proxima corrida no repita el salto.
-        """
-
-        net.flush_dns()
-        ip = net.valid_ip(self._host, self._port, min(self.timeout, 5.0))
-        self._pin_handler.pin_ip = ip
-        if ip:
-            net.save_pin(config.pinned_path(), self._host, ip)
-        else:
-            net.drop_pin(config.pinned_path())
-        return bool(ip)
-
-    def _open(self, request: Request, *, rerouted: bool = False):
-        self._wait()
-        try:
-            return self._opener.open(request, timeout=self.timeout)
-        except HTTPError as exc:
-            raise CampusHTTPError(f"El campus respondio HTTP {exc.code}.", exc.code) from exc
-        except URLError as exc:
-            if not rerouted and net.cert_mismatch(exc) and self._route_around():
-                return self._open(request, rerouted=True)
-            if not rerouted and self._pin_handler.pin_ip:
-                # La IP recordada dejo de responder: se descarta y se reintenta
-                # una vez sin pin en vez de fallar el comando.
-                self._pin_handler.pin_ip = ""
-                net.drop_pin(config.pinned_path())
-                return self._open(request, rerouted=True)
-            self._pin_handler.pin_ip = ""
-            if net.cert_mismatch(exc):
-                raise CampusError(
-                    "No se pudo conectar con el campus: el servidor presento el "
-                    f"certificado de otro sitio ({exc.reason}). Vuelve a intentarlo; "
-                    "si insiste, limpia la cache DNS con: ipconfig /flushdns"
-                ) from exc
-            raise CampusError(f"No se pudo conectar con el campus: {exc.reason}.") from exc
-        except ssl.SSLCertVerificationError as exc:
-            if not rerouted and self._route_around():
-                return self._open(request, rerouted=True)
-            raise CampusError(
-                "No se pudo conectar con el campus: el servidor presento un "
-                f"certificado de otro sitio ({exc}). Vuelve a intentarlo."
-            ) from exc
-        except TimeoutError as exc:
-            raise CampusError("La conexion con el campus agoto el tiempo de espera.") from exc
+    @property
+    def delay(self) -> float:
+        return self._session.delay
 
     def close(self) -> None:
-        try:
-            self._opener.close()
-        except Exception:  # noqa: BLE001 - el opener no siempre lo implementa
-            pass
+        self._session.close()
 
     # -- sesion ----------------------------------------------------------- #
 
@@ -281,7 +223,7 @@ class CampusClient:
             raise AuthenticationError("Usuario y contrasena son obligatorios.")
         self._credentials = (username, password)
 
-        with self._open(Request(self.login_url, headers=self.headers)) as response:
+        with self._session.send(Request(self.login_url, headers=self.headers)) as response:
             html = response.read().decode("utf-8", "replace")
 
         parser = LoginPageParser()
@@ -308,7 +250,7 @@ class CampusClient:
             },
             method="POST",
         )
-        with self._open(request) as response:
+        with self._session.send(request) as response:
             final_url = response.geturl()
             body = response.read().decode("utf-8", "replace")
 
@@ -328,7 +270,7 @@ class CampusClient:
         if "/Campus/Default.aspx" not in final_url and 'id="cPerCodigo"' not in body:
             raise AuthenticationError("El login no llego al panel del campus (posible CAPTCHA o MFA).")
 
-        self._default_url = final_url
+        self._session.home_url = final_url
         self.student_code = _extract_student_code(body)
         self._authenticated = True
         self.save_cookies()
@@ -345,17 +287,16 @@ class CampusClient:
     def save_cookies(self) -> None:
         try:
             config.ensure_home()
-            self._jar.save(ignore_discard=True, ignore_expires=True)
+            self._session.jar.save(ignore_discard=True, ignore_expires=True)
         except (OSError, LoadError):
             pass
 
     def load_cookies(self) -> bool:
-        path = self._cookies_file
         try:
-            self._jar.load(ignore_discard=True, ignore_expires=False)
+            self._session.jar.load(ignore_discard=True, ignore_expires=False)
         except (OSError, LoadError):
             return False
-        return any(not cookie.is_expired() for cookie in self._jar)
+        return any(not cookie.is_expired() for cookie in self._session.jar)
 
     def forget_cookies(self) -> bool:
         """Borra la cookie guardada en disco y vacia el jar en memoria."""
@@ -366,19 +307,19 @@ class CampusClient:
         try:
             import os
 
-            if os.path.exists(self._cookies_file):
-                os.unlink(self._cookies_file)
+            if os.path.exists(self._session.cookies_path):
+                os.unlink(self._session.cookies_path)
                 removed = True
         except OSError:
             pass
-        self._jar.clear()
+        self._session.jar.clear()
         return removed
 
     def cookie_header(self) -> str:
         """Cabecera Cookie para descargas fuera de esta sesion (hilos)."""
 
         pairs = []
-        for cookie in self._jar:
+        for cookie in self._session.jar:
             if isinstance(cookie, Cookie) and not cookie.is_expired():
                 pairs.append(f"{cookie.name}={cookie.value}")
         return "; ".join(pairs)
@@ -396,11 +337,11 @@ class CampusClient:
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Content-Type": "application/json; charset=utf-8",
                 "X-Requested-With": "XMLHttpRequest",
-                "Referer": self._default_url,
+                "Referer": self._session.home_url,
             },
             method="POST",
         )
-        with self._open(request) as response:
+        with self._session.send(request) as response:
             final_url = response.geturl()
             raw = response.read().decode("utf-8", "replace")
 
@@ -501,10 +442,10 @@ class CampusClient:
         if self.student_code:
             return self.student_code
         request = Request(
-            self._default_url,
-            headers={**self.headers, "Referer": self._default_url},
+            self._session.home_url,
+            headers={**self.headers, "Referer": self._session.home_url},
         )
-        with self._open(request) as response:
+        with self._session.send(request) as response:
             html = response.read().decode("utf-8", "replace")
         self.student_code = _extract_student_code(html)
         return self.student_code
@@ -699,7 +640,7 @@ class CampusClient:
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Content-Type": content_type,
                 "X-Requested-With": "XMLHttpRequest",
-                "Referer": self._default_url,
+                "Referer": self._session.home_url,
             },
             method="POST",
         )
@@ -715,7 +656,7 @@ class CampusClient:
         return self._send_upload(request)
 
     def _send_upload(self, request: Request) -> str:
-        with self._open(request) as response:
+        with self._session.send(request) as response:
             final_url = response.geturl()
             raw = response.read().decode("utf-8", "replace")
         if _LOGIN_REDIRECT.search(final_url):
@@ -727,6 +668,6 @@ class CampusClient:
             "base_url": self.base_url,
             "authenticated": self.authenticated,
             "student_code": self.student_code,
-            "cookies_file": self._cookies_file,
-            "cookie_names": [cookie.name for cookie in self._jar],
+            "cookies_file": self._session.cookies_path,
+            "cookie_names": [cookie.name for cookie in self._session.jar],
         }
