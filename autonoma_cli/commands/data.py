@@ -47,7 +47,7 @@ def schedule(
     return entries
 
 
-def _resources_of(
+def resources_of(
     client: CampusClient, course: Course, sessions: Sequence[int] | None
 ) -> list[tuple[int, list[Resource]]]:
     if sessions:

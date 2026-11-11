@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
-from .common import _ACCENTS, clean_text, resolve_upload_url
+from .common import ACCENTS, clean_text, resolve_upload_url
 
 # nDocLinTipo -> nombre visible
 RESOURCE_KINDS: dict[int, str] = {
@@ -59,7 +59,7 @@ def kind_name(kind: Any) -> str:
 def kind_tag(kind: Any) -> str:
     """Etiqueta corta y sin acentos para nombres de archivo."""
 
-    return kind_name(kind).translate(_ACCENTS).upper()
+    return kind_name(kind).translate(ACCENTS).upper()
 
 
 def itinerary_name(value: Any) -> str:

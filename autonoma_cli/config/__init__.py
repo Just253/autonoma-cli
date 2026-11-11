@@ -94,9 +94,9 @@ __all__ = [
     "save_settings",
 ]
 
-# Compatibilidad: estos nombres privados vivian en ``config.py`` y siguen
-# siendo alcanzables como ``config._foo`` para tests y codigo de fuera del
-# paquete. No forman parte de la superficie publica (no van en ``__all__``).
-from .crypto import _blob, _protect, _unprotect  # noqa: E402
-from .io import _write_private  # noqa: E402
-from .plain import _parse_plain_credentials  # noqa: E402
+# Helpers internos que antes se alcanzaban como ``config._foo``: ahora tienen
+# nombre publico en su modulo y se reexportan igual. No van en ``__all__``
+# porque no son parte de la superficie estable del paquete.
+from .crypto import blob, protect, unprotect  # noqa: E402, F401
+from .io import write_private  # noqa: E402, F401
+from .plain import parse_plain_credentials  # noqa: E402, F401

@@ -16,7 +16,7 @@ from urllib.parse import quote, urljoin
 _INVALID_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _SPACES = re.compile(r"\s+")
 
-_ACCENTS = str.maketrans("áéíóúÁÉÍÓÚñÑüÜ", "aeiouAEIOUnNuU")
+ACCENTS = str.maketrans("áéíóúÁÉÍÓÚñÑüÜ", "aeiouAEIOUnNuU")
 
 
 def clean_text(value: Any) -> str:
@@ -28,7 +28,7 @@ def clean_text(value: Any) -> str:
 def fold(text: Any) -> str:
     """Minusculas y sin acentos: comparar texto del campus sin pelearse."""
 
-    return clean_text(text).translate(_ACCENTS).casefold()
+    return clean_text(text).translate(ACCENTS).casefold()
 
 
 _TAGS = re.compile(r"<[^>]+>")
@@ -100,7 +100,7 @@ def date_from_millis(value: Any) -> date | None:
 def slugify(text: str, *, limit: int = 70) -> str:
     """Convierte un titulo en un nombre seguro para archivos y carpetas."""
 
-    text = clean_text(text).translate(_ACCENTS)
+    text = clean_text(text).translate(ACCENTS)
     text = _INVALID_FILENAME.sub("", text)
     text = re.sub(r"[^\w.\-]+", "_", text)
     text = _SPACES.sub("_", text)
@@ -109,7 +109,7 @@ def slugify(text: str, *, limit: int = 70) -> str:
 
 
 def safe_filename(text: str, *, fallback: str = "archivo", limit: int = 90) -> str:
-    text = clean_text(text).translate(_ACCENTS)
+    text = clean_text(text).translate(ACCENTS)
     text = _INVALID_FILENAME.sub("", text)
     text = _SPACES.sub(" ", text).strip(" .")
     if not text:

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .io import _write_private
+from .io import write_private
 from .paths import DEFAULT_BASE_URL, settings_path
 
 
@@ -74,5 +74,5 @@ def save_settings(*, timeout: float | None = None, delay: float | None = None,
         "out_dir": current.out_dir if out_dir is None else out_dir,
         "max_sessions": current.max_sessions,
     }
-    _write_private(settings_path(), json.dumps(document, indent=2))
+    write_private(settings_path(), json.dumps(document, indent=2))
     return settings_path()

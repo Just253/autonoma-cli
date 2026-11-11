@@ -10,8 +10,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from .crypto import _protect, _unprotect
-from .io import _write_private
+from .crypto import protect, unprotect
+from .io import write_private
 from .paths import APP_NAME, credentials_path, plain_credentials_path
 from .plain import read_plain_credentials
 
@@ -49,14 +49,14 @@ def save_credentials(username: str, password: str) -> Credentials:
     }
     try:
         document["method"] = "dpapi"
-        document["blob"] = base64.b64encode(_protect(secret)).decode("ascii")
+        document["blob"] = base64.b64encode(protect(secret)).decode("ascii")
         method = "dpapi"
     except Exception:  # DPAPI ausente o bloqueado
         document["method"] = "plain"
         document["blob"] = base64.b64encode(secret).decode("ascii")
         method = "plain"
 
-    _write_private(credentials_path(), json.dumps(document, indent=2))
+    write_private(credentials_path(), json.dumps(document, indent=2))
     if method == "plain":
         location = "con permisos 0600" if os.name != "nt" else "sin cifrar"
         print(
@@ -86,7 +86,7 @@ def load_credentials() -> Credentials | None:
         blob = base64.b64decode(document.get("blob", ""))
         method = str(document.get("method", "plain"))
         if method == "dpapi":
-            payload = _unprotect(blob)
+            payload = unprotect(blob)
         else:
             payload = blob
         data = json.loads(payload.decode("utf-8"))

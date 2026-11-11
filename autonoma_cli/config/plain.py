@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .io import _write_private
+from .io import write_private
 from .paths import plain_credentials_path
 
 if TYPE_CHECKING:  # credentials.py ya importa este modulo: sin ciclo en runtime
@@ -39,7 +39,7 @@ _KEY_ALIASES = {
 }
 
 
-def _parse_plain_credentials(path: Path) -> Credentials | None:
+def parse_plain_credentials(path: Path) -> Credentials | None:
     """Lee ``usuario=`` / ``password=`` de un archivo de texto."""
 
     from .credentials import Credentials
@@ -81,7 +81,7 @@ def create_plain_credentials_file() -> tuple[Path, bool]:
     path = plain_credentials_path()
     if path.exists():
         return path, False
-    _write_private(path, PLAIN_CREDENTIALS_TEMPLATE)
+    write_private(path, PLAIN_CREDENTIALS_TEMPLATE)
     return path, True
 
 
@@ -89,7 +89,7 @@ def read_plain_credentials() -> Credentials | None:
     path = plain_credentials_path()
     if not path.exists():
         return None
-    return _parse_plain_credentials(path)
+    return parse_plain_credentials(path)
 
 
 def clear_plain_credentials() -> bool:

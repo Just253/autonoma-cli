@@ -12,12 +12,12 @@ from ..downloader import DownloadItem, Manifest, plan_course, run_plan
 from ..errors import UsageError
 from ..models import Course
 from .base import out_dir
-from .data import _resources_of, catalog, resolve_any
+from .data import catalog, resolve_any, resources_of
 
 
 def _plan(args: argparse.Namespace, client: CampusClient, course: Course) -> list[DownloadItem]:
     sessions = selectors.parse_sessions(args.sesion)
-    grouped = _resources_of(client, course, sessions)
+    grouped = resources_of(client, course, sessions)
     pattern = re.compile(args.solo, re.I) if args.solo else None
     return plan_course(
         course,

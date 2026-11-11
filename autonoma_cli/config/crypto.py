@@ -21,17 +21,17 @@ if wintypes is not None:
         ]
 
 
-def _blob(data: bytes):
+def blob(data: bytes):
     buffer = ctypes.create_string_buffer(data, len(data))
     return _DataBlob(len(data), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_char)))
 
 
-def _protect(data: bytes) -> bytes:
+def protect(data: bytes) -> bytes:
     """Cifra con DPAPI. Solo disponible en Windows."""
 
     if os.name != "nt":
         raise OSError("DPAPI solo existe en Windows")
-    blob_in = _blob(data)
+    blob_in = blob(data)
     blob_out = _DataBlob()
     crypt32 = ctypes.windll.crypt32
     kernel32 = ctypes.windll.kernel32
@@ -52,12 +52,12 @@ def _protect(data: bytes) -> bytes:
         kernel32.LocalFree(blob_out.pbData)
 
 
-def _unprotect(data: bytes) -> bytes:
+def unprotect(data: bytes) -> bytes:
     """Descifra con DPAPI. Solo disponible en Windows."""
 
     if os.name != "nt":
         raise OSError("DPAPI solo existe en Windows")
-    blob_in = _blob(data)
+    blob_in = blob(data)
     blob_out = _DataBlob()
     crypt32 = ctypes.windll.crypt32
     kernel32 = ctypes.windll.kernel32

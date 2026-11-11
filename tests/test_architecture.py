@@ -86,26 +86,11 @@ SIZE_RATCHET = {
     "downloader.py": 323,  # S4 lo parte en files/
 }
 
-# Deuda anterior a S0: nombres privados que un modulo le pide a otro. En S0
-# solo se arregla downloader.py (ya importa net); config/, models/ y commands/
-# quedan fuera de alcance, asi que estos pares se congelan. La guardia falla
-# ante uno nuevo y tambien si uno desaparece, para borrar la excepcion en el
-# mismo commit que la arregla.
-PRIVATE_IMPORTS_OK = frozenset({
-    ("commands/download.py", "commands.data", "_resources_of"),
-    ("commands/resources.py", "commands.data", "_resources_of"),
-    ("config/__init__.py", "config.crypto", "_blob"),
-    ("config/__init__.py", "config.crypto", "_protect"),
-    ("config/__init__.py", "config.crypto", "_unprotect"),
-    ("config/__init__.py", "config.io", "_write_private"),
-    ("config/__init__.py", "config.plain", "_parse_plain_credentials"),
-    ("config/credentials.py", "config.crypto", "_protect"),
-    ("config/credentials.py", "config.crypto", "_unprotect"),
-    ("config/credentials.py", "config.io", "_write_private"),
-    ("config/plain.py", "config.io", "_write_private"),
-    ("config/settings.py", "config.io", "_write_private"),
-    ("models/resources.py", "models.common", "_ACCENTS"),
-})
+# Nombres privados que un modulo le pide a otro. S0.5 lo dejo en cero: el
+# nombre privado pertenece al dueno y se renombra alla, no se importa. Si
+# alguna vez hace falta una excepcion, va aca con su slice de salida y el test
+# falla si queda huerfana.
+PRIVATE_IMPORTS_OK: frozenset[tuple[str, str, str]] = frozenset()
 
 # Direccion de dependencias: cada capa solo importa las capas de su lista. Una
 # clave terminada en "/" cubre la carpeta entera; el resto, un modulo exacto.

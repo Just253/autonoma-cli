@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 
-def _write_private(path: Path, payload: str) -> None:
+def write_private(path: Path, payload: str) -> None:
     """Escribe de forma atomica y restringe permisos (no-op en Windows)."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -23,4 +23,4 @@ def _write_private(path: Path, payload: str) -> None:
 def write_private_text(path: Path, payload: str) -> None:
     """Escribe un archivo con permisos cerrados (usado tambien por la cache)."""
 
-    _write_private(path, payload)
+    write_private(path, payload)
