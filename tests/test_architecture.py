@@ -111,7 +111,7 @@ ALLOWED_LAYERS = {
     "uploadform.py": frozenset({"client", "errors"}),
     "uploadcheck.py": frozenset({"errors", "ui"}),
     "downloader.py": frozenset({"models", "errors", "net"}),
-    "client.py": frozenset({"config", "models", "errors", "net", "session"}),
+    "client.py": frozenset({"config", "models", "errors", "session"}),
     "session.py": frozenset({"net", "errors"}),
     "selectors.py": frozenset({"models", "errors"}),
     "cache.py": frozenset({"config"}),
