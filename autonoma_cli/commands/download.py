@@ -17,7 +17,7 @@ from .data import catalog, resolve_any, resources_of
 
 def _plan(args: argparse.Namespace, client: CampusClient, course: Course) -> list[DownloadItem]:
     sessions = selectors.parse_sessions(args.sesion)
-    grouped = resources_of(client, course, sessions)
+    grouped = resources_of(client, course, sessions, refresh=args.refresh)
     pattern = re.compile(args.solo, re.I) if args.solo else None
     return plan_course(
         course,

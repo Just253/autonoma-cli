@@ -33,6 +33,8 @@ LEGACY_FILES = ("cursos.json", "horario.json")
 
 MAX_AGE_CURSOS = 6 * 3600
 MAX_AGE_HORARIO = 6 * 3600
+# Una hora: el docente sube material durante la semana, pero no cada minuto.
+MAX_AGE_RECURSOS = 3600
 
 
 class Cache:
@@ -116,3 +118,38 @@ def ensure(
     cache.set(key, value)
     cache.save()
     return value
+
+
+def ensure_pairs(
+    cache: Cache,
+    key: str,
+    *,
+    ttl: float,
+    fetch: Callable[[], Any],
+    force: bool = False,
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """Como ``ensure`` pero solo acepta ``[[numero, [registros]], ...]``.
+
+    Un valor de otra version o a medio escribir se descarta y se vuelve a
+    pedir: es como se cachean los datos que van por sesion sin arrastrar
+    basura a los comandos.
+    """
+
+    pairs = _pairs(ensure(cache, key, ttl=ttl, fetch=fetch, force=force))
+    if pairs is None:
+        pairs = _pairs(ensure(cache, key, ttl=ttl, fetch=fetch, force=True)) or []
+    return pairs
+
+
+def _pairs(value: Any) -> list[tuple[int, list[dict[str, Any]]]] | None:
+    """Pares (numero, registros) de un valor guardado; ``None`` si no sirve."""
+
+    if not isinstance(value, list):
+        return None
+    try:
+        return [
+            (int(number), [item for item in items if isinstance(item, dict)])
+            for number, items in value
+        ]
+    except (TypeError, ValueError):
+        return None

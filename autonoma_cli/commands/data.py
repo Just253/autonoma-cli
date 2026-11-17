@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Any, Sequence
 
 from .. import cache, selectors
 from ..client import CampusClient
@@ -55,11 +55,28 @@ def schedule(
 
 
 def resources_of(
-    client: CampusClient, course: Course, sessions: Sequence[int] | None
+    client: CampusClient, course: Course, sessions: Sequence[int] | None, *, refresh: bool = False
 ) -> list[tuple[int, list[Resource]]]:
+    """Recursos por sesion; sin ``--sesion`` la lista se guarda una hora.
+
+    Recorrer el curso entero son ~16 POST y el material nuevo aparece durante
+    la semana, no cada minuto. ``--sesion N`` pide solo lo pedido y no cachea.
+    """
+
     if sessions:
         return [(session, client.get_session_resources(course.group_id, session)) for session in sessions]
-    return client.iter_session_resources(course.group_id)
+
+    def fetch() -> Any:
+        return [
+            [number, [dict(item.raw or {}) for item in resources]]
+            for number, resources in client.iter_session_resources(course.group_id)
+        ]
+
+    pairs = cache.ensure_pairs(
+        cache.for_campus(client.base_url), f"recursos:{_student(client)}:{course.group_id}",
+        ttl=cache.MAX_AGE_RECURSOS, fetch=fetch, force=refresh)
+    return [(number, [Resource.from_api(item, client.base_url, session=number) for item in items])
+            for number, items in pairs]
 
 
 def history(client: CampusClient, *, refresh: bool = False) -> list[HistoryCourse]:
