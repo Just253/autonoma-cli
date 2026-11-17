@@ -41,7 +41,7 @@ def download_file(
     que no sea 408/429 corta el reintento. El tiempo limite lo aplica el
     transporte de la sesion. Los archivos de ``/uploads`` son publicos, asi que
     el pedido va sin la cookie de sesion; si la ruta resultara protegida y
-    redirige al login, se reintenta una vez con la sesion.
+    redirige al login o responde 401, se reintenta una vez con la sesion.
     """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +84,13 @@ def download_file(
         except CampusHTTPError as exc:
             last_error = exc
             _discard(partial)
+            if exc.status_code == 401:
+                # Sin cookie el pedido ni llego a la ruta; con cookie la
+                # sesion esta vencida y no hay nada que reintentar.
+                if cookies:
+                    raise SessionExpiredError("La sesion del campus expiro.") from exc
+                cookies = True
+                continue
             if 400 <= exc.status_code < 500 and exc.status_code not in RETRYABLE_4XX:
                 break
         except (CampusError, OSError) as exc:

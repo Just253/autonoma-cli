@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from autonoma_cli import uploader, uploadform
+from autonoma_cli import config, uploader, uploadform
 from autonoma_cli.client import CampusClient
 from autonoma_cli.errors import CampusError, CampusHTTPError, ProtocolError, UsageError
-from autonoma_cli.models import UploadPlan, UploadTarget
+from autonoma_cli.models import UploadPlan, UploadResult, UploadTarget
+from support.home import IsolatedHomeMixin
 from support.session import FakeSession, save_cookie
 
 BASE = "https://campus.example"
@@ -125,7 +126,11 @@ class UploadFileTests(unittest.TestCase):
             uploader.upload(client, _plan(TASK))
 
 
-class InsertTests(unittest.TestCase):
+class InsertTests(IsolatedHomeMixin, unittest.TestCase):
+    def setUp(self) -> None:
+        self.make_home()
+        config.save_student_code("9000000001")
+
     def test_un_500_en_el_registro_no_se_repite(self) -> None:
         for target, register in (
             (TASK, uploader.register_task),
@@ -136,6 +141,16 @@ class InsertTests(unittest.TestCase):
                 with self.assertRaises(CampusHTTPError):
                     register(client, _plan(target), "209901_ENTREGA.zip")
                 self.assertEqual(session.attempts, 1)
+
+    def test_la_sincronizacion_con_mongo_no_se_repite(self) -> None:
+        client, session = _client(CampusHTTPError("500", 500))
+
+        note = uploader.sync_folder(
+            client, _plan(FOLDER), UploadResult(saved_name="209901_ENTREGA.zip", resource_id=209903)
+        )
+
+        self.assertIn("no se sincronizo", note)
+        self.assertEqual(session.attempts, 1, "una escritura no se repite")
 
     def test_una_lectura_normal_sigue_reintentando(self) -> None:
         client, session = _client(CampusHTTPError("500", 500))

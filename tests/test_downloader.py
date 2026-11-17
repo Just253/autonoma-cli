@@ -238,6 +238,20 @@ class DownloadFileTests(unittest.TestCase):
         self.assertFalse(self.target.exists())
         self.assertFalse(self.partial.exists())
 
+    def test_un_401_sin_cookie_reintenta_con_la_sesion(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 401.", 401), FakeResponse(b"ok"))
+        size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS)
+        self.assertEqual(size, 2)
+        self.assertEqual(send.cookies, [False, True])
+
+    def test_un_401_con_cookie_es_sesion_vencida(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 401.", 401))
+        with self.assertRaises(SessionExpiredError):
+            download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(send.cookies, [False, True])
+        self.assertFalse(self.target.exists())
+        self.assertFalse(self.partial.exists())
+
     def test_la_ruta_protegida_se_reintenta_con_la_sesion(self) -> None:
         login = FakeResponse(b"<html>login</html>", url="https://x/Campus/Login.aspx")
         body = b"%PDF-1.4 datos"

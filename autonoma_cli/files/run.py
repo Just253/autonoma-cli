@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 from urllib.request import Request
 
-from ..errors import CampusError
+from ..errors import CampusError, SessionExpiredError
 from ..ui import human_size
 from .fetch import download_file
 from .manifest import Manifest
@@ -48,6 +48,11 @@ def run_plan(
     pedidos. Con ``workers > 1`` las descargas terminan en cualquier orden y el
     espaciado es aproximado, porque los hilos comparten la marca del ultimo
     pedido sin lock.
+
+    En serie, un ``SessionExpiredError`` corta la corrida: con la cookie vencida
+    el resto fallaria igual y cada archivo gastaria un pedido al login. Con
+    hilos se deja terminar, porque cancelar a mitad deja archivos a medio
+    escribir y el resumen mentiria sobre lo que paso.
     """
 
     stats = DownloadStats()
@@ -106,6 +111,9 @@ def run_plan(
             _notify("start", item)
             try:
                 status, item, size, sha = _work(item)
+            except SessionExpiredError as exc:
+                _fail(item, exc)
+                break
             except CampusError as exc:
                 _fail(item, exc)
                 continue

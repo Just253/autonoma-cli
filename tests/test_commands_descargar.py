@@ -11,6 +11,7 @@ from unittest import mock
 
 from autonoma_cli import cache, config, ui
 from autonoma_cli.cli import main
+from autonoma_cli.errors import SessionExpiredError
 from autonoma_cli.models import Course, Resource
 from support.home import IsolatedHomeMixin
 
@@ -64,6 +65,21 @@ class FakeDownloadClient:
         return [_resource(session, f"MATERIAL {session}")]
 
 
+class ExpiredClient(FakeDownloadClient):
+    """Listas normales y descargas con la sesion vencida."""
+
+    headers = {"User-Agent": "autonoma-cli/0 (+uso-personal)"}
+    referer = ""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.sends = 0
+
+    def send(self, request: object, *, cookies: bool = True) -> object:
+        self.sends += 1
+        raise SessionExpiredError("La sesion del campus expiro.")
+
+
 class DescargarCacheTests(IsolatedHomeMixin, unittest.TestCase):
     """La segunda corrida no pide listas; --refresh y --sesion si piden."""
 
@@ -110,6 +126,33 @@ class DescargarCacheTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(self.run_main("descargar", str(GROUP), "--seco", "--sesion", "2"), 0)
         self.assertEqual(self.client.session_calls, [2, 2])
         self.assertEqual(self.client.list_calls, 0)
+
+
+class ExpiredSessionTests(IsolatedHomeMixin, unittest.TestCase):
+    """Con la cookie vencida, la corrida en serie se corta en el primer archivo."""
+
+    def setUp(self) -> None:
+        self.make_home()
+        ui.configure_color(False)
+        self.client = ExpiredClient()
+        patcher = mock.patch(
+            "autonoma_cli.commands.client_for", return_value=self.client
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.out = Path(self.tmp.name) / "descargas"
+
+    def test_la_corrida_en_serie_corta_en_el_primer_vencimiento(self) -> None:
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            code = main([
+                "--out", str(self.out), "descargar", str(GROUP), "--json", "--workers", "1",
+            ])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            self.client.sends, 2, "un reintento con cookie y se corta el resto del plan"
+        )
 
 
 if __name__ == "__main__":

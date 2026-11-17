@@ -185,7 +185,8 @@ def sync_folder(client: CampusClient, plan: UploadPlan, result: UploadResult) ->
 
     El cuerpo replica el de ``setCarpetaRecurso`` (``uploadform``); el
     documento Mongo es del campus, asi que un fallo aca solo se avisa: la
-    entrega ya quedo registrada.
+    entrega ya quedo registrada. Es una escritura, asi que un 5xx no se
+    reintenta: repetirla puede duplicar el documento.
     """
 
     try:
@@ -196,7 +197,9 @@ def sync_folder(client: CampusClient, plan: UploadPlan, result: UploadResult) ->
         plan, result, student, timestamp=time.strftime("%d/%m/%Y %H:%M:%S")
     )
     try:
-        client.call("setCarpetaRecurso", payload, page=uploadform.TASK_PAGE)
+        client.call(
+            "setCarpetaRecurso", payload, page=uploadform.TASK_PAGE, retry_transient=False
+        )
     except CampusError as exc:
         return f"la vista nueva (Mongo) no se sincronizo: {exc}"
     return ""
