@@ -79,7 +79,8 @@ class CookieStoreTests(unittest.TestCase):
         self.jar.set_cookie(_cookie("uno", "1"))
         self.jar.set_cookie(_cookie("dos", "2"))
         self.jar.set_cookie(_cookie("vieja", "3", expires=1))
-        self.assertEqual(self.store.header(), "uno=1; dos=2")
+        # El jar no garantiza orden entre versiones: la cabecera sale ordenada.
+        self.assertEqual(self.store.header(), "dos=2; uno=1")
 
     def test_header_is_empty_without_cookies(self) -> None:
         self.assertEqual(self.store.header(), "")
@@ -87,7 +88,7 @@ class CookieStoreTests(unittest.TestCase):
     def test_names_lists_every_cookie(self) -> None:
         self.jar.set_cookie(_cookie("uno", "1"))
         self.jar.set_cookie(_cookie("dos", "2"))
-        self.assertEqual(self.store.names(), ["uno", "dos"])
+        self.assertEqual(self.store.names(), ["dos", "uno"])
 
 
 class CookiePermissionTests(unittest.TestCase):

@@ -55,15 +55,20 @@ class CookieStore:
         return removed
 
     def header(self) -> str:
-        """Cabecera ``Cookie`` con las cookies vigentes del jar."""
+        """Cabecera ``Cookie`` con las cookies vigentes, ordenada por nombre.
 
-        pairs = []
-        for cookie in self.jar:
-            if isinstance(cookie, Cookie) and not cookie.is_expired():
-                pairs.append(f"{cookie.name}={cookie.value}")
-        return "; ".join(pairs)
+        El orden del jar cambia entre versiones de Python; ordenar deja la
+        cabecera y la salida de ``describe`` iguales en todas.
+        """
+
+        pairs = [
+            f"{cookie.name}={cookie.value}"
+            for cookie in self.jar
+            if isinstance(cookie, Cookie) and not cookie.is_expired()
+        ]
+        return "; ".join(sorted(pairs))
 
     def names(self) -> list[str]:
-        """Nombres de las cookies del jar, sin sus valores."""
+        """Nombres de las cookies del jar, ordenados."""
 
-        return [cookie.name for cookie in self.jar]
+        return sorted(cookie.name for cookie in self.jar)
