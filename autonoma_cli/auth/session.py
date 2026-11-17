@@ -32,6 +32,14 @@ class Transport(Protocol):
     def send(self, request: Request): ...
 
 
+class StudentStore(Protocol):
+    """Donde sobrevive el codigo de alumno entre corridas."""
+
+    def load(self) -> str: ...
+
+    def save(self, code: str) -> None: ...
+
+
 class AuthSession:
     """Estado de la sesion: credenciales, cookie y codigo de alumno."""
 
@@ -40,6 +48,8 @@ class AuthSession:
         transport: Transport,
         login_url: str,
         headers: Mapping[str, str],
+        *,
+        student: StudentStore | None = None,
     ) -> None:
         self._transport = transport
         self.login_url = login_url
@@ -47,7 +57,9 @@ class AuthSession:
         self._cookies = CookieStore(transport.jar, transport.cookies_path)
         self._credentials: tuple[str, str] | None = None
         self._authenticated = False
+        self._student = student
         self._student_code = ""
+        self._student_read = False
 
     @property
     def authenticated(self) -> bool:
@@ -55,7 +67,23 @@ class AuthSession:
 
     @property
     def student_code(self) -> str:
+        return self._student_code or self._saved_code()
+
+    def _saved_code(self) -> str:
+        """Codigo guardado en disco; se lee una sola vez por sesion."""
+
+        if self._student_read:
+            return self._student_code
+        self._student_read = True
+        if self._student is not None:
+            self._student_code = self._student.load()
         return self._student_code
+
+    def _remember(self) -> None:
+        """Persiste el codigo para la proxima corrida, si hay donde."""
+
+        if self._student is not None and self._student_code:
+            self._student.save(self._student_code)
 
     def authenticate(
         self, username: str, password: str, *, force_login: bool = False
@@ -119,8 +147,10 @@ class AuthSession:
 
         self._transport.home_url = final_url
         self._student_code = student_code_from_html(body)
+        self._student_read = True
         self._authenticated = True
         self._cookies.save()
+        self._remember()
 
     def relogin(self) -> None:
         if not self._credentials:
@@ -136,6 +166,9 @@ class AuthSession:
 
         self._authenticated = False
         self._student_code = ""
+        self._student_read = True
+        if self._student is not None:
+            self._student.save("")
         return self._cookies.clear()
 
     def cookie_header(self) -> str:
@@ -149,19 +182,25 @@ class AuthSession:
         return self._cookies.names()
 
     def ensure_student_code(self) -> str:
-        """Lee el codigo de alumno si aun no lo tenemos.
+        """Devuelve el codigo de alumno, leyendo el panel solo si no hay otro.
 
         Con la cookie guardada no hay login y el codigo solo aparece en
-        Default.aspx; sin el, el historial responde vacio.
+        Default.aspx; sin el, el historial responde vacio. Por eso se usa el
+        codigo guardado antes de pedir el panel, y lo que se lea se persiste
+        para la proxima corrida.
         """
 
         if self._student_code:
             return self._student_code
+        saved = self._saved_code()
+        if saved:
+            return saved
         home = self._transport.home_url
         request = Request(home, headers={**self.headers, "Referer": home})
         with self._transport.send(request) as response:
             html = response.read().decode("utf-8", "replace")
         self._student_code = student_code_from_html(html)
+        self._remember()
         return self._student_code
 
     def expire(self) -> None:

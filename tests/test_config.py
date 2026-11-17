@@ -89,6 +89,35 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings.timeout, 45)
         self.assertEqual(settings.workers, 8)
 
+    def test_student_code_roundtrip(self) -> None:
+        self.assertEqual(config.load_student_code(), "")
+        config.save_student_code("9000000001")
+        self.assertEqual(config.load_student_code(), "9000000001")
+        self.assertEqual(config.student_path(), config.home() / "student.json")
+        self.assertEqual(
+            json.loads(config.student_path().read_text(encoding="utf-8")),
+            {"code": "9000000001"},
+        )
+
+    def test_broken_student_file_is_empty(self) -> None:
+        config.student_path().parent.mkdir(parents=True, exist_ok=True)
+        config.student_path().write_text("{esto no es json", encoding="utf-8")
+        self.assertEqual(config.load_student_code(), "")
+        config.student_path().write_text('{"code": null}', encoding="utf-8")
+        self.assertEqual(config.load_student_code(), "")
+
+    def test_empty_student_code_removes_the_file(self) -> None:
+        config.save_student_code("9000000001")
+        config.save_student_code("")
+        self.assertFalse(config.student_path().exists())
+        self.assertEqual(config.load_student_code(), "")
+
+    def test_student_code_file_is_private(self) -> None:
+        config.save_student_code("9000000001")
+        if os.name != "nt":
+            mode = stat.S_IMODE(config.student_path().stat().st_mode)
+            self.assertEqual(mode, 0o600)
+
 
 class PlainCredentialsTests(unittest.TestCase):
     def setUp(self) -> None:

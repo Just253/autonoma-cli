@@ -10,6 +10,7 @@ from support.cache import (
     COURSES_KEY,
     NOW,
     OTHER,
+    OTHER_STUDENT,
     CacheTestCase,
     FakeClient,
     cache_path,
@@ -177,6 +178,20 @@ class CoursesCacheTests(CacheTestCase):
 
         self.assertTrue(all(not path.exists() for path in legacy))
         self.assertTrue(cache_path().exists())
+
+    def test_two_students_use_different_keys(self) -> None:
+        first = FakeClient()
+        second = FakeClient()
+        second.student_code = OTHER_STUDENT
+
+        with patch("autonoma_cli.cache.time.time", return_value=NOW):
+            catalog(first)
+            catalog(second)
+
+        self.assertEqual(
+            sorted(self.read(cache_path())["entries"]),
+            [COURSES_KEY, f"cursos:{OTHER_STUDENT}"],
+        )
 
 
 if __name__ == "__main__":

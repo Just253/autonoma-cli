@@ -127,11 +127,13 @@ class FakeGradesApi:
     def __init__(self) -> None:
         self.grade_calls: list[str] = []
         self.summary_calls = 0
+        self.history_calls = 0
 
     def get_courses(self) -> list[Course]:
         return courses()
 
     def get_history(self) -> list[dict[str, object]]:
+        self.history_calls += 1
         return [dict(row) for row in HISTORY_ROWS]
 
     def get_grades(self, group_id: int | str) -> CourseGrades:

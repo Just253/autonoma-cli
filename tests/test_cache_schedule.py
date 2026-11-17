@@ -10,6 +10,8 @@ from support.cache import (
     BASE,
     NOW,
     OTHER,
+    OTHER_STUDENT,
+    STUDENT,
     CacheTestCase,
     FakeClient,
     cache_path,
@@ -17,6 +19,12 @@ from support.cache import (
     entry,
     raw_schedule,
 )
+
+
+def _key(group_id: int) -> str:
+    """Clave del horario: lleva el alumno para no mezclar dos cuentas."""
+
+    return f"horario:{STUDENT}:{group_id}"
 
 
 class ScheduleCacheTests(CacheTestCase):
@@ -31,16 +39,16 @@ class ScheduleCacheTests(CacheTestCase):
         self.assertEqual(len(entries), 2)
         document_ = self.read(cache_path())
         self.assertEqual(document_["base_url"], BASE)
-        self.assertEqual(sorted(document_["entries"]), ["horario:111", "horario:222"])
-        self.assertEqual(document_["entries"]["horario:111"]["at"], NOW)
-        self.assertEqual(document_["entries"]["horario:111"]["value"][0]["nGruCodigo"], 111)
+        self.assertEqual(sorted(document_["entries"]), [_key(111), _key(222)])
+        self.assertEqual(document_["entries"][_key(111)]["at"], NOW)
+        self.assertEqual(document_["entries"][_key(111)]["value"][0]["nGruCodigo"], 111)
 
     def test_partial_reuse_only_fetches_stale_group(self) -> None:
         self.write(
             document(
                 {
-                    "horario:111": entry(NOW - 10, [raw_schedule("Tema cacheado")]),
-                    "horario:222": entry(
+                    _key(111): entry(NOW - 10, [raw_schedule("Tema cacheado")]),
+                    _key(222): entry(
                         NOW - cache.MAX_AGE_HORARIO - 1, [raw_schedule("Tema viejo")]
                     ),
                 }
@@ -55,11 +63,11 @@ class ScheduleCacheTests(CacheTestCase):
         self.assertEqual(client.schedule_calls, [222])
         self.assertEqual([entry_.title for entry_ in entries], ["Tema cacheado", "Tema fresco"])
         document_ = self.read(cache_path())
-        self.assertEqual(document_["entries"]["horario:111"]["at"], NOW - 10)
-        self.assertEqual(document_["entries"]["horario:222"]["at"], NOW)
+        self.assertEqual(document_["entries"][_key(111)]["at"], NOW - 10)
+        self.assertEqual(document_["entries"][_key(222)]["at"], NOW)
 
     def test_all_fresh_does_not_rewrite_file(self) -> None:
-        path = self.write(document({"horario:111": entry(NOW - 10, [raw_schedule("Tema cacheado")])}))
+        path = self.write(document({_key(111): entry(NOW - 10, [raw_schedule("Tema cacheado")])}))
         document_ = self.read(path)
         document_["marca"] = "no reescribir"
         path.write_text(json.dumps(document_), encoding="utf-8")
@@ -76,7 +84,7 @@ class ScheduleCacheTests(CacheTestCase):
     def test_other_base_url_refetches(self) -> None:
         self.write(
             document(
-                {"horario:111": entry(NOW, [raw_schedule("Tema de otro campus")])},
+                {_key(111): entry(NOW, [raw_schedule("Tema de otro campus")])},
                 base_url=OTHER,
             )
         )
@@ -89,7 +97,7 @@ class ScheduleCacheTests(CacheTestCase):
         self.assertEqual([entry_.title for entry_ in entries], ["Tema fresco"])
 
     def test_refresh_ignores_fresh_cache(self) -> None:
-        self.write(document({"horario:111": entry(NOW, [raw_schedule("Tema cacheado")])}))
+        self.write(document({_key(111): entry(NOW, [raw_schedule("Tema cacheado")])}))
         client = FakeClient()
 
         with patch("autonoma_cli.cache.time.time", return_value=NOW):
@@ -97,6 +105,21 @@ class ScheduleCacheTests(CacheTestCase):
 
         self.assertEqual(client.schedule_calls, [111])
         self.assertEqual([entry_.title for entry_ in entries], ["Tema fresco"])
+
+    def test_two_students_use_different_keys(self) -> None:
+        first = FakeClient()
+        second = FakeClient()
+        second.student_code = OTHER_STUDENT
+        courses = [self.course(111, "CURSO UNO")]
+
+        with patch("autonoma_cli.cache.time.time", return_value=NOW):
+            schedule(first, courses)
+            schedule(second, courses)
+
+        self.assertEqual(
+            sorted(self.read(cache_path())["entries"]),
+            [_key(111), f"horario:{OTHER_STUDENT}:111"],
+        )
 
 
 if __name__ == "__main__":

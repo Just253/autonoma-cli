@@ -52,7 +52,8 @@ class CampusClient:
             cookies_path=cookies_file or str(config.cookies_path()),
             pinned_path=config.pinned_path(),
         )
-        self._auth = AuthSession(self._session, self.login_url, self.headers)
+        self._auth = AuthSession(
+            self._session, self.login_url, self.headers, student=config.StudentCode())
         self._api = api.ApiContext(
             base_url=self.base_url,
             headers=self.headers,
@@ -150,10 +151,9 @@ class CampusClient:
         return api.methods.get_course_detail(self._api, group_id, session)
 
     def ensure_student_code(self) -> str:
-        """Lee el codigo de alumno si aun no lo tenemos.
+        """Codigo de alumno: el guardado o el que trae el panel.
 
-        Con la cookie guardada no hay login y el codigo solo aparece en
-        Default.aspx; sin el, el historial responde vacio.
+        Sin codigo el historial responde vacio y la cache pierde identidad.
         """
 
         return self._auth.ensure_student_code()

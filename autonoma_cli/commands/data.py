@@ -10,11 +10,17 @@ from ..errors import UsageError
 from ..models import ClassSession, Course, HistoryCourse, Resource
 
 
+def _student(client: CampusClient) -> str:
+    """Identidad de las claves de cache: dos alumnos no comparten entradas."""
+
+    return client.student_code or "anon"
+
+
 def catalog(client: CampusClient, *, refresh: bool = False) -> list[Course]:
     """Cursos del periodo con cache de 6 horas (el campus responde lento)."""
     items = cache.ensure(
         cache.for_campus(client.base_url),
-        f"cursos:{client.student_code}",
+        f"cursos:{_student(client)}",
         ttl=cache.MAX_AGE_CURSOS,
         fetch=lambda: [dict(course.raw or {}) for course in client.get_courses()],
         force=refresh,
@@ -28,11 +34,12 @@ def schedule(
 ) -> list[ClassSession]:
     """Programacion de todos los cursos, con cache de 6 horas por grupo."""
     store = cache.for_campus(client.base_url)
+    student = _student(client)
     entries: list[ClassSession] = []
     for course in courses:
         records = cache.ensure(
             store,
-            f"horario:{course.group_id}",
+            f"horario:{student}:{course.group_id}",
             ttl=cache.MAX_AGE_HORARIO,
             fetch=lambda course=course: [
                 dict(entry.raw or {})
@@ -60,7 +67,7 @@ def history(client: CampusClient, *, refresh: bool = False) -> list[HistoryCours
 
     items = cache.ensure(
         cache.for_campus(client.base_url),
-        f"historial:{client.student_code or 'anon'}",
+        f"historial:{_student(client)}",
         ttl=cache.MAX_AGE_CURSOS,
         fetch=lambda: [dict(row) for row in client.get_history()],
         force=refresh,

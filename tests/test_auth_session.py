@@ -65,15 +65,35 @@ class _Transport:
         return self.responses.pop(0)
 
 
+class _Store:
+    """Archivo del codigo de alumno en memoria."""
+
+    def __init__(self, code: str = "") -> None:
+        self.code = code
+        self.saves: list[str] = []
+
+    def load(self) -> str:
+        return self.code
+
+    def save(self, code: str) -> None:
+        self.code = code
+        self.saves.append(code)
+
+
 class AuthSessionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path = str(Path(self.tmp.name) / "config" / "session.cookies")
 
-    def _session(self, *responses: _FakeResponse) -> tuple[AuthSession, _Transport]:
+    def _session(
+        self, *responses: _FakeResponse, student: _Store | None = None
+    ) -> tuple[AuthSession, _Transport]:
         transport = _Transport(self.path, *responses)
-        return AuthSession(transport, LOGIN_URL, {"User-Agent": "test"}), transport
+        session = AuthSession(
+            transport, LOGIN_URL, {"User-Agent": "test"}, student=student
+        )
+        return session, transport
 
     def _login(self, final_url: str = HOME_URL, body: str = HOME_HTML) -> tuple[AuthSession, _Transport]:
         session, transport = self._session(
@@ -217,6 +237,42 @@ class AuthSessionTests(unittest.TestCase):
         self.assertFalse(session.authenticated)
         self.assertEqual(session.student_code, "9000000001")
         self.assertTrue(Path(self.path).exists())
+
+    def test_starts_with_the_saved_code_and_skips_the_panel(self) -> None:
+        store = _Store("9000000001")
+        session, transport = self._session(student=store)
+        self.assertEqual(session.student_code, "9000000001")
+        self.assertEqual(session.ensure_student_code(), "9000000001")
+        self.assertEqual(transport.requests, [])
+
+    def test_login_persists_the_code(self) -> None:
+        store = _Store()
+        session, _ = self._session(
+            _FakeResponse(LOGIN_URL, LOGIN_HTML),
+            _FakeResponse(HOME_URL, HOME_HTML),
+            student=store,
+        )
+        session.login("90000001", "clave-de-ejemplo")
+        self.assertEqual(store.code, "9000000001")
+
+    def test_ensure_student_code_persists_what_it_reads(self) -> None:
+        store = _Store()
+        session, _ = self._session(
+            _FakeResponse(LOGIN_URL, LOGIN_HTML),
+            _FakeResponse(HOME_URL, '<html><body>sin codigo</body></html>'),
+            _FakeResponse(HOME_URL, HOME_HTML),
+            student=store,
+        )
+        session.login("90000001", "clave-de-ejemplo")
+        self.assertEqual(store.code, "")
+        self.assertEqual(session.ensure_student_code(), "9000000001")
+        self.assertEqual(store.code, "9000000001")
+
+    def test_logout_clears_the_saved_code(self) -> None:
+        store = _Store("9000000001")
+        session, _ = self._session(student=store)
+        session.logout()
+        self.assertEqual(store.code, "")
 
 
 if __name__ == "__main__":

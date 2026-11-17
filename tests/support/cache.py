@@ -16,6 +16,7 @@ BASE = "https://virtual.autonoma.edu.pe"
 OTHER = "https://otro.example.edu.pe"
 NOW = 1_800_000_000.0
 STUDENT = "20240001"
+OTHER_STUDENT = "20240002"
 COURSES_KEY = f"cursos:{STUDENT}"
 
 

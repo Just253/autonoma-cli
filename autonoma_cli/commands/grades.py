@@ -40,7 +40,7 @@ def _detail(client: CampusClient, args: argparse.Namespace, course: Course,
             current_ids: set[str], official: AcademicSummary | None) -> int:
     row = None
     if str(course.group_id) not in current_ids:
-        row = next((item for item in history(client, refresh=False)
+        row = next((item for item in history(client, refresh=args.refresh)
                     if str(item.group_id) == str(course.group_id)), None)
     if row is not None:
         payload = _closed(row)

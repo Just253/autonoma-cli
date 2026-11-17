@@ -15,8 +15,8 @@ Se puede cambiar la carpeta con AUTONOMA_CLI_HOME (util para pruebas).
 
 El paquete parte el archivo unico por tema: ``paths`` (rutas y constantes),
 ``io`` (escritura privada), ``crypto`` (DPAPI), ``credentials``, ``plain``
-(``credentials.txt``) y ``settings``. Este ``__init__`` reexporta la misma
-superficie publica que tenia ``config.py``.
+(``credentials.txt``), ``settings`` y ``student`` (codigo de alumno). Este
+``__init__`` reexporta la misma superficie publica que tenia ``config.py``.
 """
 
 from __future__ import annotations
@@ -54,6 +54,13 @@ from .credentials import (
     save_credentials,
 )
 from .settings import Settings, load_settings, save_settings
+from .student import (
+    STUDENT_FILE,
+    StudentCode,
+    load_student_code,
+    save_student_code,
+    student_path,
+)
 
 __all__ = [
     # constantes y rutas
@@ -64,6 +71,7 @@ __all__ = [
     "COOKIES_FILE",
     "PINNED_FILE",
     "SETTINGS_FILE",
+    "STUDENT_FILE",
     "CACHE_DIRNAME",
     "home",
     "credentials_path",
@@ -71,6 +79,7 @@ __all__ = [
     "cookies_path",
     "pinned_path",
     "settings_path",
+    "student_path",
     "cache_dir",
     # credenciales
     "METHOD_LABELS",
@@ -90,6 +99,10 @@ __all__ = [
     "Settings",
     "load_settings",
     "save_settings",
+    # codigo de alumno entre corridas
+    "StudentCode",
+    "load_student_code",
+    "save_student_code",
 ]
 
 # Helpers internos con nombre publico en su modulo, reexportados para que
