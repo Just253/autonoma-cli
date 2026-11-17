@@ -107,7 +107,7 @@ class CampusClient:
             "User-Agent": user_agent,
             "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
         }
-        self._session = session or CampusSession(
+        self._session = session if session is not None else CampusSession(
             self.base_url, timeout=timeout, delay=delay,
             cookies_path=cookies_file or str(config.cookies_path()),
             pinned_path=config.pinned_path(),
