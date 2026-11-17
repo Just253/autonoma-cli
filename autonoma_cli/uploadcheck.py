@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .downloader import human_size
 from .errors import UsageError
+from .ui import human_size
 
 MAX_BYTES = 25 * 1024 * 1024
 WARN_BYTES = 5 * 1024 * 1024

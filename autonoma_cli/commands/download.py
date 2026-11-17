@@ -8,8 +8,8 @@ from typing import Sequence
 
 from .. import config, render, selectors, ui
 from ..client import CampusClient
-from ..downloader import DownloadItem, Manifest, plan_course, run_plan
 from ..errors import UsageError
+from ..files import DownloadItem, Manifest, plan_course, run_plan
 from ..models import Course
 from .base import out_dir
 from .data import catalog, resolve_any, resources_of
@@ -69,7 +69,8 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
     stats = run_plan(
         all_items,
         manifest,
-        cookie_header=client.cookie_header(),
+        send=client.send,
+        headers=client.headers,
         timeout=client.timeout,
         workers=args.workers if args.workers is not None else config.load_settings().workers,
         force=args.forzar,

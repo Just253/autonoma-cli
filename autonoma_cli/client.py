@@ -86,6 +86,9 @@ class CampusClient:
     def close(self) -> None:
         self._session.close()
 
+    def send(self, request: Any):
+        return self._session.send(request)
+
     # -- sesion ----------------------------------------------------------- #
 
     def authenticate(self, username: str, password: str, *, force_login: bool = False) -> bool:

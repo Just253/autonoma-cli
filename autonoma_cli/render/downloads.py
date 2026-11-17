@@ -6,7 +6,7 @@ import sys
 from typing import Any
 
 from .. import ui
-from ..downloader import DownloadItem, human_size
+from ..files import DownloadItem
 
 
 def progress(kind: str, item: DownloadItem, detail: str) -> None:
@@ -25,7 +25,7 @@ def print_stats(stats: Any, dry_run: bool = False) -> None:
     print()
     print(
         f"Descargados: {stats.downloaded} · Ya estaban: {stats.skipped} · "
-        f"Errores: {stats.failed} · Total: {human_size(stats.bytes)}"
+        f"Errores: {stats.failed} · Total: {ui.human_size(stats.bytes)}"
     )
     for path, message in stats.failures:
         print(f"  {ui.red('x')} {path}: {message}", file=sys.stderr)

@@ -118,3 +118,14 @@ def header(text: str) -> str:
 
 def section(title: str, width: int = 74) -> str:
     return f"\n{bold(title)}\n{'-' * min(width, max(8, len(title)))}"
+
+
+def human_size(size: int | float) -> str:
+    """Tamano legible: ``512 B``, ``2.0 KB``, ``5.0 MB``."""
+
+    units = ("B", "KB", "MB", "GB")
+    value = float(size)
+    for unit in units:
+        if value < 1024 or unit == units[-1]:
+            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024

@@ -22,7 +22,7 @@ MODULES = {
 }
 # Duenos legitimos de JSON, uno por formato; el resto usa cache.ensure o render.
 # net.py lee y escribe pinned-ip.json, el pin de la IP que valido certificado.
-LOADS = {"api/call.py", "api/json.py", "cache.py", "downloader.py", "net.py"}
+LOADS = {"api/call.py", "api/json.py", "cache.py", "files/manifest.py", "net.py"}
 DUMPS = LOADS | {"render/text.py"}
 GRAPH = {"cli.py", "__main__.py"}  # unicos que pueden importar cli
 
@@ -37,8 +37,8 @@ SIZE_RULES = (
     (
         r"commands/.+\.py",
         120,
-        "un comando por archivo: si crece, saca el plan a selectors/downloader y "
-        "la tabla a render/.",
+        "un comando por archivo: si crece, saca el plan a files/ y la tabla a "
+        "render/.",
     ),
     (
         r"config/.+\.py",
@@ -85,8 +85,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 264,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267 -> 264; solo puede bajar
-    "downloader.py": 323,  # solo puede bajar
+    "client.py": 267,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267 -> 264 -> 267 (send)
 }
 
 # Nombres privados que un modulo le pide a otro. Hoy esta vacio: el nombre
@@ -103,15 +102,15 @@ ALLOWED_LAYERS = {
     "cli.py": frozenset({"commands", "config", "selectors", "ui", "client", "errors"}),
     "commands/": frozenset({
         "commands", "cache", "config", "models", "selectors", "ui", "render",
-        "client", "downloader", "errors", "uploader",
+        "client", "files", "errors", "uploader",
     }),
-    "render/": frozenset({"render", "models", "ui"}),
+    "render/": frozenset({"render", "models", "ui", "files"}),
     "uploader.py": frozenset({
         "api", "client", "errors", "models", "uploadcheck", "uploadform",
     }),
     "uploadform.py": frozenset({"api", "errors"}),
     "uploadcheck.py": frozenset({"errors", "ui"}),
-    "downloader.py": frozenset({"models", "errors", "net"}),
+    "files/": frozenset({"files", "models", "errors", "ui"}),
     "auth/": frozenset({"auth", "models", "errors"}),
     "api/": frozenset({"api", "auth", "models", "errors"}),
     "client.py": frozenset({
@@ -129,12 +128,8 @@ ALLOWED_LAYERS = {
 
 # Aristas que la tabla prohibe pero que hoy existen. La guardia falla si
 # aparece una nueva y tambien si una de estas desaparece sin borrar su
-# excepcion.
-KNOWN_EDGES = {
-    ("render/downloads.py", "downloader"): "human_size deberia vivir en ui.py",
-    ("render/upload.py", "downloader"): "human_size deberia vivir en ui.py",
-    ("uploadcheck.py", "downloader"): "human_size deberia vivir en ui.py",
-}
+# excepcion. Hoy esta vacia: cada capa mira hacia abajo.
+KNOWN_EDGES: dict[tuple[str, str], str] = {}
 
 # Atributos privados y el modulo que los define. Usarlos desde otro modulo
 # acopla las capas igual que un import, aunque no viaje ningun nombre.

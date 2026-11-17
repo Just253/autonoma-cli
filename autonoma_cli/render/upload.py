@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .. import ui
-from ..downloader import human_size
 from ..models import UploadPlan, UploadResult
 
 
@@ -15,14 +14,14 @@ def destination(plan: UploadPlan) -> str:
 
 def print_upload_plan(plan: UploadPlan) -> None:
     print()
-    print(ui.bold(f"{destination(plan)} · {plan.path.name} ({human_size(plan.size)})"))
+    print(ui.bold(f"{destination(plan)} · {plan.path.name} ({ui.human_size(plan.size)})"))
     print(ui.table(
         ["Campo", "Valor"],
         [
             ["Curso", f"{plan.course_name} · {plan.target.group_id}"],
             ["Destino", destination(plan)],
             ["Archivo", f"{plan.path} · .{plan.extension}"],
-            ["Tamano", human_size(plan.size)],
+            ["Tamano", ui.human_size(plan.size)],
             ["Titulo", plan.title],
             ["Descripcion", plan.description],
             ["param0", plan.param0 or "(sin param0: se conserva el nombre)"],

@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+from urllib.request import Request
 
-from autonoma_cli.downloader import (
+from autonoma_cli.errors import CampusError, CampusHTTPError
+from autonoma_cli.files import (
     Manifest,
     build_filename,
     course_folder,
-    human_size,
+    download_file,
     plan_course,
 )
 from autonoma_cli.models import Course, Resource
+from autonoma_cli.ui import human_size
 
 BASE = "https://virtual.autonoma.edu.pe"
+HEADERS = {"User-Agent": "autonoma-cli/0 (+uso-personal)", "Accept-Language": "es-PE"}
 
 
 def make_course(group: int = 1, name: str = "CURSO DE EJEMPLO UNO") -> Course:
@@ -34,6 +40,40 @@ def make_resource(title: str, kind: int = 2, session: int = 1, url: str = "a.pdf
         BASE,
         session=session,
     )
+
+
+class FakeResponse:
+    """Respuesta minima: ``read`` por bloques y contexto, como la del opener."""
+
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self.body)
+        chunk, self.body = self.body[:size], self.body[size:]
+        return chunk
+
+    def __enter__(self) -> "FakeResponse":
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+
+class FakeSend:
+    """Transporte falso: respuestas guionadas y los pedidos que recibio."""
+
+    def __init__(self, *responses: object) -> None:
+        self.responses = list(responses)
+        self.requests: list[Request] = []
+
+    def __call__(self, request: Request) -> FakeResponse:
+        self.requests.append(request)
+        item = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
+        if isinstance(item, BaseException):
+            raise item
+        return item
 
 
 class FilenameTests(unittest.TestCase):
@@ -103,6 +143,62 @@ class ManifestTests(unittest.TestCase):
             again = Manifest(root)
             self.assertEqual(again.get("https://x/a.pdf")["bytes"], 10)
             self.assertIsNone(again.get("https://x/nada.pdf"))
+
+
+class DownloadFileTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.target = Path(self.tmp.name) / "curso" / "a.pdf"
+        self.partial = self.target.with_name("a.pdf.part")
+
+    def test_writes_file_and_returns_size_and_sha(self) -> None:
+        body = b"%PDF-1.4 datos"
+        send = FakeSend(FakeResponse(body))
+        size, sha = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS)
+        self.assertEqual(size, len(body))
+        self.assertEqual(sha, hashlib.sha256(body).hexdigest())
+        self.assertEqual(self.target.read_bytes(), body)
+        self.assertFalse(self.partial.exists())
+
+    def test_request_uses_the_session_headers_and_no_cookie(self) -> None:
+        send = FakeSend(FakeResponse(b"x"))
+        download_file(
+            send,
+            "https://x/a.pdf",
+            self.target,
+            headers=HEADERS,
+            referer="https://x/Campus/Default.aspx",
+        )
+        request = send.requests[0]
+        self.assertEqual(request.get_header("User-agent"), HEADERS["User-Agent"])
+        self.assertEqual(request.get_header("Accept"), "*/*")
+        self.assertEqual(request.get_header("Referer"), "https://x/Campus/Default.aspx")
+        self.assertFalse([key for key in request.headers if key.lower() == "cookie"])
+
+    def test_empty_body_is_an_error_and_retries(self) -> None:
+        send = FakeSend(FakeResponse(b""))
+        with mock.patch("autonoma_cli.files.fetch.time.sleep"):
+            with self.assertRaises(CampusError) as context:
+                download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=2)
+        self.assertIn("vacio", str(context.exception))
+        self.assertEqual(len(send.requests), 2)
+        self.assertFalse(self.partial.exists())
+
+    def test_client_error_is_not_retried(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 404.", 404))
+        with self.assertRaises(CampusError) as context:
+            download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertIn("No se pudo descargar https://x/a.pdf", str(context.exception))
+        self.assertEqual(len(send.requests), 1)
+        self.assertFalse(self.target.exists())
+
+    def test_server_error_is_retried(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 503.", 503), FakeResponse(b"ok"))
+        with mock.patch("autonoma_cli.files.fetch.time.sleep"):
+            size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(size, 2)
+        self.assertEqual(len(send.requests), 2)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import argparse
 
 from .. import config, render
 from ..client import CampusClient
-from ..downloader import human_size
+from ..ui import human_size
 
 
 def run_cache(client: CampusClient | None, args: argparse.Namespace) -> int:

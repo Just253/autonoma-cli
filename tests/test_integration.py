@@ -9,8 +9,8 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from autonoma_cli.client import CampusClient
-from autonoma_cli.downloader import Manifest, plan_course, run_plan
 from autonoma_cli.errors import AuthenticationError
+from autonoma_cli.files import Manifest, plan_course, run_plan
 
 LOGIN_PAGE = """<!doctype html><html><body>
 <form name="frmLogin" method="post" action="./Login.aspx" id="frmLogin">
@@ -68,6 +68,10 @@ SILABO = [
 
 PDF_BYTES = b"%PDF-1.4\n% fake\n1 0 obj\n<<>>\nendobj\n"
 
+# Cabeceras de cada pedido de archivo: prueba que la cookie viaja por el jar y
+# que hay un solo User-Agent, el del cliente.
+UPLOADS: list[dict[str, str]] = []
+
 
 def resource(session: int, title: str, url: str, kind: int = 2) -> dict:
     return {
@@ -103,6 +107,10 @@ class FakeCampus(BaseHTTPRequestHandler):
         elif path == "/Campus/Default.aspx":
             self._send(200, HOME_PAGE.encode("utf-8"))
         elif path.startswith("/uploads/"):
+            UPLOADS.append({
+                "cookie": self.headers.get("Cookie", ""),
+                "user_agent": self.headers.get("User-Agent", ""),
+            })
             self._send(200, PDF_BYTES, "application/pdf")
         else:
             self._send(404, b"not found")
@@ -173,6 +181,7 @@ class FakeCampusTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.folder = Path(self.tmp.name)
+        UPLOADS.clear()
         self.client = CampusClient(
             base_url=self.base,
             delay=0,
@@ -218,14 +227,37 @@ class FakeCampusTests(unittest.TestCase):
         self.assertEqual([item.resource.kind_name for item in items], ["Archivo", "Tarea"])
 
         manifest = Manifest(self.folder)
-        stats = run_plan(items, manifest, cookie_header=self.client.cookie_header(), workers=1)
+        stats = run_plan(
+            items,
+            manifest,
+            send=self.client.send,
+            headers=self.client.headers,
+            workers=1,
+        )
         self.assertEqual(stats.downloaded, 2)
         self.assertEqual(stats.failed, 0)
         target = items[0].path
         self.assertEqual(target.read_bytes()[:5], b"%PDF-")
+        # La cookie la agrega el jar del opener y el User-Agent es el del
+        # cliente: no hay cabecera Cookie armada a mano ni un segundo agente.
+        self.assertTrue(UPLOADS)
+        self.assertTrue(
+            all("ASP.NET_SessionId=abc123" in seen["cookie"] for seen in UPLOADS),
+            UPLOADS,
+        )
+        self.assertEqual(
+            {seen["user_agent"] for seen in UPLOADS},
+            {self.client.headers["User-Agent"]},
+        )
 
         manifest = Manifest(self.folder)
-        again = run_plan(items, manifest, cookie_header=self.client.cookie_header(), workers=1)
+        again = run_plan(
+            items,
+            manifest,
+            send=self.client.send,
+            headers=self.client.headers,
+            workers=1,
+        )
         self.assertEqual(again.downloaded, 0)
         self.assertEqual(again.skipped, 2)
 

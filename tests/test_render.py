@@ -7,7 +7,7 @@ from datetime import date
 
 from autonoma_cli import ui
 from autonoma_cli.render import print_schedule, print_stats
-from autonoma_cli.downloader import DownloadStats
+from autonoma_cli.files import DownloadStats
 from autonoma_cli.models import ClassSession
 
 TUESDAY = date(2026, 10, 20)
