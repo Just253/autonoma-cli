@@ -36,5 +36,5 @@ otro archivo, se enlaza, no se copia.
 - ¿Nuevo flag o comando? `CLI.md` + `cli.py` + test de parser.
 - ¿Nuevo formato de salida? `JSON.md` + test del comando.
 - ¿Nueva ruta o variable? `CONFIG.md`.
-- ¿Nuevo endpoint o campo del campus? `API.md` + `client.py`.
+- ¿Nuevo endpoint o campo del campus? `API.md` + `api/`.
 - ¿Cambia la estructura de módulos? `DESARROLLO.md`.

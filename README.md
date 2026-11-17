@@ -92,7 +92,7 @@ autonoma whoami
 ## Limitaciones
 
 - Depende de endpoints internos no documentados: si el campus los cambia, habrá
-  que ajustar `client.py`.
+  que ajustar `api/`.
 - No soporta CAPTCHA ni MFA (hoy el login no los pide).
 - No descarga el contenido de tareas, foros ni evaluaciones: solo archivos
   publicados con URL.
