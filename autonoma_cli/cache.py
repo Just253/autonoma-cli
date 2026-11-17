@@ -11,8 +11,7 @@ Reglas:
   - La frescura es estricta (``ahora - at < ttl``): justo en el limite la
     entrada ya se considera vencida.
   - ``None`` es la unica marca de miss. Una lista vacia es un valor valido y se
-    cachea: antes ``items`` vacia forzaba un refetch en cada comando, ahora se
-    respeta lo que devolvio el campus.
+    cachea tal como la devolvio el campus.
   - ``save`` escribe de forma atomica y con permisos cerrados
     (``config.write_private_text``) y, como mejor esfuerzo, borra los
     ``cursos.json`` / ``horario.json`` de la version anterior.

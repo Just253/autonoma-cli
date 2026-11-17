@@ -15,7 +15,10 @@ credentials.json
 credentials.txt
 session.cookies
 settings.json
+student.json
+pinned-ip.json
 cache/
+/cache.json
 descargas/
 manifest.json
 *.part

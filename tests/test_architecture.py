@@ -13,8 +13,8 @@ import unittest
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1] / "autonoma_cli"
-# Clave = ruta posix relativa al paquete. Antes se usaba path.name, que cegaba
-# la guardia a las subcarpetas y hacia colisionar dos settings.py.
+# Clave = ruta posix relativa al paquete: path.name colisiona entre subcarpetas
+# y deja la guardia ciega a lo que vive dentro de auth/, api/ o files/.
 MODULES = {
     path.relative_to(PACKAGE).as_posix(): path
     for path in sorted(PACKAGE.rglob("*.py"))
@@ -85,7 +85,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 267,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267 -> 264 -> 267 (send)
+    "client.py": 267,  # tope congelado: solo puede bajar
 }
 
 # Nombres privados que un modulo le pide a otro. Hoy esta vacio: el nombre
