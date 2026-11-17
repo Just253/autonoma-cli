@@ -86,7 +86,7 @@ class CampusClient:
     def close(self) -> None:
         self._session.close()
 
-    def send(self, request: Any):
+    def send(self, request: Any) -> Any:
         return self._session.send(request)
 
     # -- sesion ----------------------------------------------------------- #
@@ -108,7 +108,7 @@ class CampusClient:
         return self._auth.logout()
 
     def cookie_header(self) -> str:
-        """Cabecera Cookie para descargas fuera de esta sesion (hilos)."""
+        """Cabecera Cookie del jar, para un consumidor fuera de esta sesion."""
 
         return self._auth.cookie_header()
 

@@ -3,7 +3,7 @@
 ## Cómo encaja todo
 
 ```
-cli.py  →  commands/  →  cache.py, render/, selectors.py, client.py, downloader.py
+cli.py  →  commands/  →  cache.py, render/, selectors.py, client.py, files/
                  ↓                              ↓
               config/, models/, ui.py, errors.py    api/, auth/, session.py, net.py
 ```
@@ -27,7 +27,7 @@ autonoma_cli/
 ├── auth/               # login, cookies y código de alumno
 ├── net.py              # pin de IP, TLS y resolución del campus
 ├── models/             # un dominio por archivo: common, courses, resources, sessions, grades, uploads
-├── downloader.py       # plan, descarga atómica, manifiesto y sha256
+├── files/              # plan, manifiesto, descarga atómica y corrida
 ├── uploader.py         # plan y corrida de una subida (una subida y un registro)
 ├── uploadcheck.py      # valida archivo y textos antes de tocar la red
 ├── uploadform.py       # contrato del campus: multipart, XML y respuestas
@@ -59,7 +59,7 @@ cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
   | Archivo | Dueño |
   |---------|-------|
   | `cache.json` | `cache.py` |
-  | `manifest.json` | `downloader.py` |
+  | `manifest.json` | `files/manifest.py` |
   | `pinned-ip.json` | `net.py` |
   | `settings.json` y credenciales | `config/` |
   | respuesta `{"d": ...}` | `api/json.py` |

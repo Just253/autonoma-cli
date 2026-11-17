@@ -31,7 +31,7 @@ class CampusSession:
 
     El jar se crea una sola vez y es el mismo que recibe el
     ``HTTPCookieProcessor`` del opener, asi que las cookies que guarda el
-    campus viajan en cada pedido y en cada descarga que lea ``cookie_header``.
+    campus viajan en cada pedido que hace la sesion.
     """
 
     def __init__(
