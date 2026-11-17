@@ -38,19 +38,6 @@ def home() -> Path:
     return root / APP_NAME
 
 
-def ensure_home() -> Path:
-    """Crea la carpeta de configuracion con permisos cerrados."""
-
-    folder = home()
-    folder.mkdir(parents=True, exist_ok=True)
-    if os.name != "nt":
-        try:
-            folder.chmod(0o700)
-        except OSError:
-            pass
-    return folder
-
-
 def credentials_path() -> Path:
     return home() / CREDENTIALS_FILE
 

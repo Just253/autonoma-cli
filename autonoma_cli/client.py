@@ -98,6 +98,7 @@ class CampusClient:
         user_agent: str = DEFAULT_USER_AGENT,
         cookies_file: str | None = None,
         retries: int = 3,
+        session: CampusSession | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.login_url = urljoin(self.base_url + "/", "Campus/Login.aspx")
@@ -106,10 +107,8 @@ class CampusClient:
             "User-Agent": user_agent,
             "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
         }
-        self._session = CampusSession(
-            self.base_url,
-            timeout=timeout,
-            delay=delay,
+        self._session = session or CampusSession(
+            self.base_url, timeout=timeout, delay=delay,
             cookies_path=cookies_file or str(config.cookies_path()),
             pinned_path=config.pinned_path(),
         )
@@ -499,5 +498,5 @@ class CampusClient:
             "authenticated": self._auth.authenticated,
             "student_code": self._auth.student_code,
             "cookies_file": self._session.cookies_path,
-            "cookie_names": [cookie.name for cookie in self._session.jar],
+            "cookie_names": self._auth.cookie_names(),
         }

@@ -143,6 +143,11 @@ class AuthSession:
 
         return self._cookies.header()
 
+    def cookie_names(self) -> list[str]:
+        """Nombres de las cookies del jar, sin sus valores."""
+
+        return self._cookies.names()
+
     def ensure_student_code(self) -> str:
         """Lee el codigo de alumno si aun no lo tenemos.
 

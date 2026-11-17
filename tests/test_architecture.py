@@ -84,7 +84,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 503,  # 858 -> 732 -> 673 -> 503 al extraer net.py, session.py y auth/; solo puede bajar
+    "client.py": 502,  # 858 -> 732 -> 673 -> 503 -> 502; solo puede bajar
     "downloader.py": 323,  # solo puede bajar
 }
 
@@ -130,7 +130,17 @@ KNOWN_EDGES = {
     ("render/downloads.py", "downloader"): "human_size deberia vivir en ui.py",
     ("render/upload.py", "downloader"): "human_size deberia vivir en ui.py",
     ("uploadcheck.py", "downloader"): "human_size deberia vivir en ui.py",
-    ("uploader.py", "client._call"): "usar client.call() publico",
+    ("uploader.py", "client._call"): "falta client.call() publico",
+}
+
+# Atributos privados y el modulo que los define. Usarlos desde otro modulo
+# acopla las capas igual que un import, aunque no viaje ningun nombre.
+PRIVATE_ATTRIBUTES = {
+    "_session": "client",
+    "_auth": "client",
+    "_call": "client",
+    "_opener": "session",
+    "_pin_handler": "session",
 }
 
 
@@ -260,15 +270,38 @@ def imported_targets(name: str, node: ast.ImportFrom) -> list[str]:
     return []
 
 
-def imported_layers(name: str) -> set[str]:
-    """Capas internas que ``name`` importa."""
+def imported_layers(name: str, module: ast.Module | None = None) -> set[str]:
+    """Capas internas que ``name`` importa.
+
+    ``import autonoma_cli.x`` y ``from autonoma_cli.x import y`` acoplan igual,
+    asi que las dos formas pasan por la tabla. El alias no cambia el destino y
+    ``import autonoma_cli`` solo no acopla ninguna capa.
+    """
 
     known = layers()
     found: set[str] = set()
-    for node in ast.walk(tree(name)):
+    for node in ast.walk(module if module is not None else tree(name)):
         if isinstance(node, ast.ImportFrom):
             found |= {target.split(".")[0] for target in imported_targets(name, node)}
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = alias.name.split(".")
+                if len(parts) > 1 and parts[0] == "autonoma_cli":
+                    found.add(parts[1])
     return found & known
+
+
+def attribute_edges(name: str, module: ast.Module | None = None) -> set[tuple[str, str]]:
+    """Aristas ``(modulo, dueno.atributo)`` por usar un privado fuera de su dueno."""
+
+    found: set[tuple[str, str]] = set()
+    for node in ast.walk(module if module is not None else tree(name)):
+        if not isinstance(node, ast.Attribute):
+            continue
+        owner = PRIVATE_ATTRIBUTES.get(node.attr)
+        if owner and name != f"{owner}.py":
+            found.add((name, f"{owner}.{node.attr}"))
+    return found
 
 
 def private_imports(name: str) -> set[tuple[str, str, str]]:
@@ -393,22 +426,16 @@ class ArchitectureTests(unittest.TestCase):
         for name in MODULES:
             allowed = allowed_layers(name) or frozenset()
             edges |= {(name, layer) for layer in imported_layers(name) - allowed}
-        for name in MODULES:
-            if name == "client.py":
-                continue
-            if any(
-                isinstance(node, ast.Attribute) and node.attr == "_call"
-                for node in ast.walk(tree(name))
-            ):
-                edges.add((name, "client._call"))
+            edges |= attribute_edges(name)
         new = sorted(edges - set(KNOWN_EDGES))
         self.assertFalse(
             new,
             "aristas nuevas contra la direccion: "
             + ", ".join(f"{src} -> {dst}" for src, dst in new)
             + ". Mira ALLOWED_LAYERS: si la capa destino es correcta, agrega la "
-            "capa a la lista; si no, mueve el codigo a su capa. client._call solo "
-            "se usa dentro de client.py; uploader deberia llamar a client.call().",
+            "capa a la lista; si no, mueve el codigo a su capa. Un atributo "
+            "privado (_session, _auth, _call, _opener, _pin_handler) se usa "
+            "desde la API publica de su dueno.",
         )
         stale = sorted(set(KNOWN_EDGES) - edges)
         self.assertFalse(
@@ -417,6 +444,62 @@ class ArchitectureTests(unittest.TestCase):
             + ", ".join(f"{src} -> {dst}" for src, dst in stale)
             + ". Borralas en el mismo commit que elimina la arista.",
         )
+
+    def test_absolute_import_counts_as_a_layer(self) -> None:
+        """``import autonoma_cli.x`` acopla igual que ``from autonoma_cli import x``."""
+
+        self.assertEqual(
+            imported_layers("uploader.py", ast.parse("import autonoma_cli.session\n")),
+            {"session"},
+        )
+        self.assertEqual(
+            imported_layers("uploader.py", ast.parse("import autonoma_cli\n")),
+            set(),
+            "importar el paquete solo no acopla ninguna capa",
+        )
+        self.assertEqual(
+            imported_layers(
+                "uploader.py", ast.parse("import autonoma_cli.session as s\n")
+            ),
+            {"session"},
+            "el alias no cambia el modulo importado",
+        )
+
+    def test_private_attributes_belong_to_their_owner(self) -> None:
+        """Usar ``client._session`` desde otro modulo es una arista."""
+
+        module = ast.parse("client._session.send(request)\nself._opener.close()\n")
+        self.assertEqual(
+            attribute_edges("uploader.py", module),
+            {("uploader.py", "client._session"), ("uploader.py", "session._opener")},
+        )
+        self.assertEqual(
+            attribute_edges("client.py", ast.parse("self._session.close()\n")),
+            set(),
+            "el dueno usa su privado sin arista",
+        )
+        self.assertNotIn(
+            ("uploader.py", "client._session"),
+            KNOWN_EDGES,
+            "client._session no tiene excepcion: la guardia tiene que fallar",
+        )
+
+    def test_size_ratchet_is_exact(self) -> None:
+        """El tope congelado es el tamano medido: si encoge, baja en el commit."""
+
+        for name, cap in SIZE_RATCHET.items():
+            with self.subTest(module=name):
+                self.assertIn(
+                    name, MODULES,
+                    f"SIZE_RATCHET nombra {name}, que ya no existe: borra su tope",
+                )
+                lines = len(MODULES[name].read_text(encoding="utf-8").splitlines())
+                self.assertEqual(
+                    lines, cap,
+                    f"{name} mide {lines} lineas y su tope congelado es {cap}: si "
+                    "encogio, baja el tope en el mismo commit; si crecio, mueve una "
+                    "responsabilidad a otro archivo en vez de subir el tope.",
+                )
 
     def test_tests_stay_small(self) -> None:
         """Los tests se leen por tarea: ninguno pasa de 300 lineas.

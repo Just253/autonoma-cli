@@ -21,7 +21,10 @@ autonoma_cli/
 │   ├── data.py         # cursos, horario, historial y resolución de cursos
 │   └── …               # account, courses, history, timetable, resources, grades, download, entregar, maintenance, credenciales
 ├── config/             # rutas, io atómico, DPAPI, credenciales, settings
-├── client.py           # login ASP.NET, cookies y WebMethods
+├── client.py           # fachada de llamadas: WebMethods y datos ya parseados
+├── session.py          # transporte HTTP: opener, jar, pin de IP y pausa
+├── auth/               # login, cookies y código de alumno
+├── net.py              # pin de IP, TLS y resolución del campus
 ├── models/             # un dominio por archivo: common, courses, resources, sessions, grades, uploads
 ├── downloader.py       # plan, descarga atómica, manifiesto y sha256
 ├── uploader.py         # plan y corrida de una subida (una subida y un registro)
@@ -34,6 +37,10 @@ autonoma_cli/
 └── errors.py           # errores tipados
 ```
 
+`client.py` no sabe de formularios ni de cookies: el login y el jar viven en
+`auth/`, el opener y el pin en `session.py`, y `net.py` resuelve y valida el
+certificado. Los comandos solo ven el cliente.
+
 ## La guardia de arquitectura
 
 `tests/test_architecture.py` no prueba comportamiento: fija dónde vive cada
@@ -44,8 +51,17 @@ cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
   `uploader.py` ≤ 260, `uploadform.py` ≤ 200 y `tests/test_*.py` ≤ 300 (salvo
   `test_architecture.py`).
 - `cli.py` y `commands/` no imprimen: usan `render` o `ui`.
-- JSON a mano solo en `cache.py`, `client.py`, `downloader.py`, `render/text.py`
-  y `config/` (cada módulo es dueño de su archivo).
+- JSON a mano solo en el módulo dueño del archivo; el resto pasa por
+  `cache.ensure` o `render.emit_json`:
+
+  | Archivo | Dueño |
+  |---------|-------|
+  | `cache.json` | `cache.py` |
+  | `manifest.json` | `downloader.py` |
+  | `pinned-ip.json` | `net.py` |
+  | `settings.json` y credenciales | `config/` |
+  | respuesta `{"d": ...}` | `client.py` |
+  | salida `--json` | `render/text.py` |
 - El multipart y el XML de la subida se arman solo en `uploadform.py`;
   `uploadcheck.py` valida archivo y textos antes de la red y `uploader.py` hace
   el plan y la corrida.

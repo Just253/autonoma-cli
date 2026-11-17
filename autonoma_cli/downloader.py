@@ -21,6 +21,7 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from . import __version__
 from .errors import CampusError
 from .models import Course, Resource, kind_tag, safe_filename, slugify
 from .net import cert_mismatch, flush_dns
@@ -155,7 +156,6 @@ def human_size(size: int | float) -> str:
         if value < 1024 or unit == units[-1]:
             return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
         value /= 1024
-    return f"{size} B"
 
 
 def download_file(
@@ -179,7 +179,7 @@ def download_file(
     for attempt in range(1, max(1, retries) + 1):
         try:
             headers = {
-                "User-Agent": "autonoma-cli/0.1 (+uso-personal)",
+                "User-Agent": f"autonoma-cli/{__version__} (+uso-personal)",
                 "Accept": "*/*",
                 "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
             }

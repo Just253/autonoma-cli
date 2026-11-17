@@ -23,6 +23,15 @@ LOGIN_URL = "https://campus-de-ejemplo.edu/Campus/Login.aspx"
 HOME_URL = "https://campus-de-ejemplo.edu/Campus/Default.aspx"
 
 
+def _cookie(name: str = "ASP.NET_SessionId", value: str = "abc") -> Cookie:
+    return Cookie(
+        version=0, name=name, value=value, port=None,
+        port_specified=False, domain="campus-de-ejemplo.edu", domain_specified=True,
+        domain_initial_dot=False, path="/", path_specified=True, secure=False,
+        expires=None, discard=False, comment=None, comment_url=None, rest={},
+    )
+
+
 class _FakeResponse:
     def __init__(self, url: str, body: str) -> None:
         self._url = url
@@ -132,12 +141,7 @@ class AuthSessionTests(unittest.TestCase):
 
     def test_authenticate_reuses_a_saved_cookie(self) -> None:
         jar = LWPCookieJar(self.path)
-        jar.set_cookie(Cookie(
-            version=0, name="ASP.NET_SessionId", value="abc", port=None,
-            port_specified=False, domain="campus-de-ejemplo.edu", domain_specified=True,
-            domain_initial_dot=False, path="/", path_specified=True, secure=False,
-            expires=None, discard=False, comment=None, comment_url=None, rest={},
-        ))
+        jar.set_cookie(_cookie())
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         jar.save(ignore_discard=True, ignore_expires=True)
 
@@ -187,13 +191,13 @@ class AuthSessionTests(unittest.TestCase):
 
     def test_cookie_header_reads_the_jar(self) -> None:
         session, transport = self._login()
-        transport.jar.set_cookie(Cookie(
-            version=0, name="ASP.NET_SessionId", value="abc", port=None,
-            port_specified=False, domain="campus-de-ejemplo.edu", domain_specified=True,
-            domain_initial_dot=False, path="/", path_specified=True, secure=False,
-            expires=None, discard=False, comment=None, comment_url=None, rest={},
-        ))
+        transport.jar.set_cookie(_cookie())
         self.assertEqual(session.cookie_header(), "ASP.NET_SessionId=abc")
+
+    def test_cookie_names_lists_the_jar_without_values(self) -> None:
+        session, transport = self._login()
+        transport.jar.set_cookie(_cookie())
+        self.assertEqual(session.cookie_names(), ["ASP.NET_SessionId"])
 
     def test_ensure_student_code_reads_the_panel_once(self) -> None:
         session, transport = self._session(
