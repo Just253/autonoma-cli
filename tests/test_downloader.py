@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 from urllib.request import Request
 
-from autonoma_cli.errors import CampusError, CampusHTTPError
+from autonoma_cli.errors import CampusError, CampusHTTPError, SessionExpiredError
 from autonoma_cli.files import (
     Manifest,
     build_filename,
@@ -45,8 +45,12 @@ def make_resource(title: str, kind: int = 2, session: int = 1, url: str = "a.pdf
 class FakeResponse:
     """Respuesta minima: ``read`` por bloques y contexto, como la del opener."""
 
-    def __init__(self, body: bytes) -> None:
+    def __init__(self, body: bytes, url: str = "") -> None:
         self.body = body
+        self.url = url
+
+    def geturl(self) -> str:
+        return self.url
 
     def read(self, size: int = -1) -> bytes:
         if size < 0:
@@ -199,6 +203,36 @@ class DownloadFileTests(unittest.TestCase):
             size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
         self.assertEqual(size, 2)
         self.assertEqual(len(send.requests), 2)
+
+    def test_request_timeout_is_retried(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 408.", 408), FakeResponse(b"ok"))
+        with mock.patch("autonoma_cli.files.fetch.time.sleep"):
+            size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(size, 2)
+        self.assertEqual(len(send.requests), 2)
+
+    def test_too_many_requests_is_retried(self) -> None:
+        send = FakeSend(CampusHTTPError("El campus respondio HTTP 429.", 429), FakeResponse(b"ok"))
+        with mock.patch("autonoma_cli.files.fetch.time.sleep"):
+            size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(size, 2)
+        self.assertEqual(len(send.requests), 2)
+
+    def test_network_error_is_retried(self) -> None:
+        send = FakeSend(CampusError("No se pudo conectar con el campus."), FakeResponse(b"ok"))
+        with mock.patch("autonoma_cli.files.fetch.time.sleep"):
+            size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(size, 2)
+        self.assertEqual(len(send.requests), 2)
+
+    def test_login_redirect_is_not_saved(self) -> None:
+        login = FakeResponse(b"<html>login</html>", url="https://x/Campus/Login.aspx?ReturnUrl=1")
+        send = FakeSend(login)
+        with self.assertRaises(SessionExpiredError):
+            download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
+        self.assertEqual(len(send.requests), 1)
+        self.assertFalse(self.target.exists())
+        self.assertFalse(self.partial.exists())
 
 
 if __name__ == "__main__":

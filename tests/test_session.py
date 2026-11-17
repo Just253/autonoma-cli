@@ -113,6 +113,13 @@ class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
         net_module.save_pin(config.pinned_path(), "otro.example", "192.0.2.10")
         self.assertEqual(self._session().pin_ip, "")
 
+    def test_el_pin_se_guarda_sin_dejar_temporal(self) -> None:
+        path = config.pinned_path()
+        net_module.save_pin(path, "campus-de-ejemplo.edu", "192.0.2.10")
+        self.assertTrue(path.exists())
+        self.assertFalse(path.with_name(path.name + ".tmp").exists())
+        self.assertEqual(net_module.load_pin(path, "campus-de-ejemplo.edu"), "192.0.2.10")
+
     def test_una_ip_muerta_se_descarta_y_se_reintenta(self) -> None:
         session = self._session()
         session.pin_ip = "192.0.2.10"

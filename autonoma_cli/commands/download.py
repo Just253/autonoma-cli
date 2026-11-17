@@ -71,7 +71,6 @@ def _download(args: argparse.Namespace, client: CampusClient, courses: Sequence[
         manifest,
         send=client.send,
         headers=client.headers,
-        timeout=client.timeout,
         workers=args.workers if args.workers is not None else config.load_settings().workers,
         force=args.forzar,
         referer=client.referer,

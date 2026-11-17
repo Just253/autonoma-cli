@@ -37,7 +37,6 @@ def run_plan(
     *,
     send: Callable[[Request], Any],
     headers: Mapping[str, str],
-    timeout: float = 60.0,
     workers: int = 1,
     force: bool = False,
     referer: str = "",
@@ -70,7 +69,6 @@ def run_plan(
             item.path,
             headers=headers,
             referer=referer,
-            timeout=timeout,
         )
         return "done", item, size, sha
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import socket
 import ssl
 import time
@@ -102,7 +103,11 @@ def save_pin(path: Path, host: str, ip: str) -> None:
     payload = json.dumps({"host": host, "ip": ip, "checked_at": time.time()})
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(payload, encoding="utf-8")
+        # Varios hilos pueden reescribir el pin a la vez: el temporal evita
+        # que una lectura a medias vea un JSON truncado.
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
         pass
 
