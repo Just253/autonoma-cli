@@ -4,8 +4,8 @@
 
 ```
 cli.py  →  commands/  →  cache.py, render/, selectors.py, client.py, downloader.py
-                 ↓
-              config/, models/, ui.py, errors.py
+                 ↓                              ↓
+              config/, models/, ui.py, errors.py    api/, auth/, session.py, net.py
 ```
 
 `cli.main` construye el parser, resuelve el cliente una sola vez
@@ -21,7 +21,8 @@ autonoma_cli/
 │   ├── data.py         # cursos, horario, historial y resolución de cursos
 │   └── …               # account, courses, history, timetable, resources, grades, download, entregar, maintenance, credenciales
 ├── config/             # rutas, io atómico, DPAPI, credenciales, settings
-├── client.py           # fachada de llamadas: WebMethods y datos ya parseados
+├── client.py           # fachada: constructor, delegaciones y describe
+├── api/                # política de llamadas, WebMethods y desempaquetado
 ├── session.py          # transporte HTTP: opener, jar, pin de IP y pausa
 ├── auth/               # login, cookies y código de alumno
 ├── net.py              # pin de IP, TLS y resolución del campus
@@ -37,9 +38,10 @@ autonoma_cli/
 └── errors.py           # errores tipados
 ```
 
-`client.py` no sabe de formularios ni de cookies: el login y el jar viven en
-`auth/`, el opener y el pin en `session.py`, y `net.py` resuelve y valida el
-certificado. Los comandos solo ven el cliente.
+`client.py` no sabe de formularios, cookies ni reintentos: el login y el jar
+viven en `auth/`, la política de llamadas y los WebMethods en `api/`, el opener y
+el pin en `session.py`, y `net.py` resuelve y valida el certificado. Los comandos
+solo ven el cliente.
 
 ## La guardia de arquitectura
 
@@ -60,7 +62,7 @@ cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
   | `manifest.json` | `downloader.py` |
   | `pinned-ip.json` | `net.py` |
   | `settings.json` y credenciales | `config/` |
-  | respuesta `{"d": ...}` | `client.py` |
+  | respuesta `{"d": ...}` | `api/json.py` |
   | salida `--json` | `render/text.py` |
 - El multipart y el XML de la subida se arman solo en `uploadform.py`;
   `uploadcheck.py` valida archivo y textos antes de la red y `uploader.py` hace

@@ -85,7 +85,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 267,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267; solo puede bajar
+    "client.py": 264,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267 -> 264; solo puede bajar
     "downloader.py": 323,  # solo puede bajar
 }
 
@@ -141,6 +141,7 @@ KNOWN_EDGES = {
 PRIVATE_ATTRIBUTES = {
     "_session": "client",
     "_auth": "client",
+    "_api": "client",
     "_call": "client",
     "_opener": "session",
     "_pin_handler": "session",
@@ -444,7 +445,7 @@ class ArchitectureTests(unittest.TestCase):
             + ", ".join(f"{src} -> {dst}" for src, dst in new)
             + ". Mira ALLOWED_LAYERS: si la capa destino es correcta, agrega la "
             "capa a la lista; si no, mueve el codigo a su capa. Un atributo "
-            "privado (_session, _auth, _call, _opener, _pin_handler) se usa "
+            "privado (_session, _auth, _api, _call, _opener, _pin_handler) se usa "
             "desde la API publica de su dueno.",
         )
         stale = sorted(set(KNOWN_EDGES) - edges)

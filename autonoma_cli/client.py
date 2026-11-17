@@ -1,11 +1,8 @@
-"""Cliente HTTP del Campus Virtual (ASP.NET Web Forms + WebMethods JSON).
+"""Fachada del Campus Virtual: una sesion autenticada y sus datos.
 
-Flujo:
-  1. GET  /Campus/Login.aspx  -> campos ocultos (__VIEWSTATE, __EVENTVALIDATION...)
-  2. POST /Campus/Login.aspx  -> cookies de sesion
-  3. POST /Campus/Default.aspx/<metodo>  -> JSON {"d": ...}
-
-Las cookies se guardan en disco para no repetir el login en cada comando.
+El transporte vive en ``session``, el login y las cookies en ``auth``, y la
+politica de llamadas con los WebMethods en ``api``. Este modulo solo compone
+esas piezas, delega y describe la sesion para los comandos.
 """
 
 from __future__ import annotations
