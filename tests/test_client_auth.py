@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from autonoma_cli.client import CampusClient, unwrap
+from autonoma_cli.api import unwrap
+from autonoma_cli.client import CampusClient
 from autonoma_cli.errors import AuthenticationError, CampusHTTPError
 from support.home import IsolatedHomeMixin
 from support.session import FakeSession, save_cookie
@@ -107,7 +108,7 @@ class HomeUrlTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(client.student_code, "9000000001")
         self.assertEqual(client.referer, HOME_URL)
 
-        client._call_once("Metodo", {}, "/Campus/Default.aspx")
+        client.call("Metodo", {})
         self.assertEqual(session.requests[-1].get_header("Referer"), HOME_URL)
 
 
@@ -132,7 +133,7 @@ class SessionRetryTests(unittest.TestCase):
             _FakeResponse(f"{HOME_URL}/Alu_ObtenerCursosActuales", '{"d": {"ok": true}}'),
         )
 
-        self.assertEqual(client._call("Alu_ObtenerCursosActuales", {}), {"ok": True})
+        self.assertEqual(client.call("Alu_ObtenerCursosActuales", {}), {"ok": True})
         self.assertEqual(session.attempts, 4)
         self.assertTrue(client.authenticated)
 
@@ -141,9 +142,9 @@ class SessionRetryTests(unittest.TestCase):
             CampusHTTPError("El campus respondio HTTP 500.", 500), retries=2
         )
 
-        with mock.patch("autonoma_cli.client.time.sleep"):
+        with mock.patch("autonoma_cli.api.call.time.sleep"):
             with self.assertRaises(CampusHTTPError):
-                client._call("Alu_ObtenerCursosActuales", {})
+                client.call("Alu_ObtenerCursosActuales", {})
 
         self.assertEqual(session.attempts, 2)
 

@@ -139,7 +139,7 @@ class InsertTests(unittest.TestCase):
 
     def test_una_lectura_normal_sigue_reintentando(self) -> None:
         client, session = _client(CampusHTTPError("500", 500))
-        with mock.patch("autonoma_cli.client.time.sleep"):
+        with mock.patch("autonoma_cli.api.call.time.sleep"):
             with self.assertRaises(CampusHTTPError):
                 client.get_courses()
         self.assertEqual(session.attempts, client.retries)

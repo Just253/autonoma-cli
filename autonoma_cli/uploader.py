@@ -15,7 +15,8 @@ import uuid
 from pathlib import Path
 
 from . import uploadform
-from .client import CampusClient, unwrap
+from .api import unwrap
+from .client import CampusClient
 from .errors import CampusError, UsageError
 from .models import Course, Resource, UploadPlan, UploadResult, UploadTarget
 from .uploadcheck import precheck
@@ -140,7 +141,7 @@ def build_plan(
 def register_resource(client: CampusClient, plan: UploadPlan, saved: str) -> UploadResult:
     """Registra el archivo en la carpeta compartida. ``nUAEstado != 1`` = rechazo."""
 
-    data = client._call(
+    data = client.call(
         "Doc_InsertarRecurso",
         {"xml": uploadform.resource_xml(plan, saved)},
         page=uploadform.RESOURCE_PAGE,
@@ -163,7 +164,7 @@ def register_resource(client: CampusClient, plan: UploadPlan, saved: str) -> Upl
 def register_task(client: CampusClient, plan: UploadPlan, saved: str) -> UploadResult:
     """Registra la entrega en una tarea. Exito: respuesta numerica > 1."""
 
-    data = client._call(
+    data = client.call(
         "Alu_InsertarTarea",
         {"xml": uploadform.task_xml(plan, saved)},
         page=uploadform.TASK_PAGE,
@@ -195,7 +196,7 @@ def sync_folder(client: CampusClient, plan: UploadPlan, result: UploadResult) ->
         plan, result, student, timestamp=time.strftime("%d/%m/%Y %H:%M:%S")
     )
     try:
-        client._call("setCarpetaRecurso", payload, page=uploadform.TASK_PAGE)
+        client.call("setCarpetaRecurso", payload, page=uploadform.TASK_PAGE)
     except CampusError as exc:
         return f"la vista nueva (Mongo) no se sincronizo: {exc}"
     return ""

@@ -79,7 +79,7 @@ class UploadClient:
         self.uploads.append(body)
         return "209901_ENTREGA.zip"
 
-    def _call(
+    def call(
         self,
         method: str,
         payload: Any = None,

@@ -243,7 +243,7 @@ class _Client:
     def ensure_student_code(self) -> str:
         return self.student_code
 
-    def _call(
+    def call(
         self,
         method: str,
         payload: Any = None,

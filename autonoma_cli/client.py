@@ -10,21 +10,11 @@ Las cookies se guardan en disco para no repetir el login en cada comando.
 
 from __future__ import annotations
 
-import json
-import time
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 from urllib.parse import urljoin
-from urllib.request import Request
 
-from . import __version__, config
-from .auth import AuthSession, LOGIN_REDIRECT
-from .errors import (
-    AuthenticationError,
-    CampusError,
-    CampusHTTPError,
-    ProtocolError,
-    SessionExpiredError,
-)
+from . import __version__, api, config
+from .auth import AuthSession
 from .models import (
     AcademicSummary,
     ClassSession,
@@ -37,53 +27,6 @@ from .session import CampusSession
 
 DEFAULT_BASE_URL = config.DEFAULT_BASE_URL
 DEFAULT_USER_AGENT = f"autonoma-cli/{__version__} (+uso-personal)"
-PERFIL_ALUMNO = 13
-TABLERO_PAGE = "/Campus/ua/Tablero/Perfil/Camp_Virt_Perfil.aspx"
-# cTablas exacto del tablero (docs/API.md seccion 8): cada nombre vuelve como clave.
-TABLERO_TABLES = (
-    "Malla_Curricular,Malla_Curricular_grafPromedioNotaByCiclo,"
-    "Malla_Curricular_grafAvanceCarrera,Malla_Curricular_grafTipoCurso,"
-    "DatosPersonales,Competencias,PuestoAcademico"
-)
-
-
-def unwrap(payload: Any) -> Any:
-    """Desenvuelve ``{"d": ...}``, incluso cuando ``d`` es un string JSON."""
-
-    if not isinstance(payload, Mapping) or "d" not in payload:
-        return payload
-    value = payload["d"]
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-    return value
-
-
-def parse_json_text(raw: str) -> Any:
-    """Devuelve el JSON que trae ``raw`` y lo desenvuelve; si no es JSON, el texto.
-
-    Lo usan las subidas: ``FileUpload.ashx`` contesta el nombre guardado como
-    texto pelado, pero algunas versiones lo mandan como ``{"d": ...}``.
-    """
-
-    try:
-        return unwrap(json.loads(raw))
-    except (TypeError, ValueError):
-        return raw
-
-
-def _as_records(data: Any) -> list[Mapping[str, Any]]:
-    data = unwrap(data)
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, Mapping)]
-    if isinstance(data, Mapping):
-        for key in ("recursos", "items", "data", "result"):
-            nested = data.get(key)
-            if isinstance(nested, list):
-                return [item for item in nested if isinstance(item, Mapping)]
-    return []
 
 
 class CampusClient:
@@ -113,6 +56,13 @@ class CampusClient:
             pinned_path=config.pinned_path(),
         )
         self._auth = AuthSession(self._session, self.login_url, self.headers)
+        self._api = api.ApiContext(
+            base_url=self.base_url,
+            headers=self.headers,
+            session=self._session,
+            auth=self._auth,
+            retries=self.retries,
+        )
 
     # -- infraestructura -------------------------------------------------- #
 
@@ -164,37 +114,7 @@ class CampusClient:
 
     # -- WebMethods -------------------------------------------------------- #
 
-    def _call_once(self, method: str, payload: Mapping[str, Any], page: str) -> Any:
-        page_url = urljoin(self.base_url + "/", page.lstrip("/"))
-        endpoint = f"{page_url.rstrip('/')}/{method}"
-        request = Request(
-            endpoint,
-            data=json.dumps(dict(payload), ensure_ascii=False).encode("utf-8"),
-            headers={
-                **self.headers,
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Content-Type": "application/json; charset=utf-8",
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": self._session.home_url,
-            },
-            method="POST",
-        )
-        with self._session.send(request) as response:
-            final_url = response.geturl()
-            raw = response.read().decode("utf-8", "replace")
-
-        if LOGIN_REDIRECT.search(final_url):
-            raise SessionExpiredError("La sesion del campus expiro.")
-        if not raw.strip():
-            return None
-        try:
-            payload_json = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            snippet = raw[:160].replace("\n", " ")
-            raise ProtocolError(f"{method} no devolvio JSON: {snippet!r}") from exc
-        return unwrap(payload_json)
-
-    def _call(
+    def call(
         self,
         method: str,
         payload: Mapping[str, Any] | None = None,
@@ -212,63 +132,22 @@ class CampusClient:
         ejecutar el metodo.
         """
 
-        payload = payload or {}
-        last_error: Exception | None = None
-        for attempt in range(1, self.retries + 1):
-            try:
-                if not self._auth.authenticated:
-                    self._auth.relogin()
-                return self._call_once(method, payload, page)
-            except SessionExpiredError:
-                self._auth.expire()
-                if allow_relogin:
-                    self._auth.relogin()
-                    return self._call_once(method, payload, page)
-                raise
-            except CampusHTTPError as exc:
-                if exc.status_code == 401:
-                    # La cookie vencio sin redirigir al login: el campus responde 401.
-                    self._auth.expire()
-                    if allow_relogin:
-                        self._auth.relogin()
-                        return self._call_once(method, payload, page)
-                    raise SessionExpiredError("La sesion del campus expiro.") from exc
-                if retry_transient and exc.status_code in {500, 502, 503, 504} and attempt < self.retries:
-                    last_error = exc
-                    time.sleep(1.5 * attempt)
-                    continue
-                raise
-            except CampusError as exc:
-                if isinstance(exc, (AuthenticationError, ProtocolError)) or not retry_transient:
-                    raise
-                if attempt < self.retries:
-                    last_error = exc
-                    time.sleep(1.5 * attempt)
-                    continue
-                raise
-        raise last_error or CampusError(f"{method} fallo sin detalle.")
+        return api.call(
+            self._api,
+            method,
+            payload,
+            page=page,
+            allow_relogin=allow_relogin,
+            retry_transient=retry_transient,
+        )
 
     # -- datos ------------------------------------------------------------ #
 
     def get_courses(self) -> list[Course]:
-        data = self._call("Alu_ObtenerCursosActuales", {})
-        if not isinstance(data, list):
-            raise ProtocolError("La lista de cursos no tiene el formato esperado.")
-        return [
-            Course.from_api(item, self.base_url)
-            for item in data
-            if isinstance(item, Mapping) and item.get("nGruCodigo")
-        ]
+        return api.methods.get_courses(self._api)
 
     def get_course_detail(self, group_id: int | str, session: int = 0) -> Any:
-        return self._call(
-            "getInformationDetailCurso",
-            {
-                "nGruCodigo": group_id,
-                "nSesion": int(session),
-                "nPerfil": PERFIL_ALUMNO,
-            },
-        )
+        return api.methods.get_course_detail(self._api, group_id, session)
 
     def ensure_student_code(self) -> str:
         """Lee el codigo de alumno si aun no lo tenemos.
@@ -282,99 +161,33 @@ class CampusClient:
     def get_curricula(self, kind: int = 1) -> list[Mapping[str, Any]]:
         """Curriculas del alumno (1 = carrera, 2 = extraacademicos)."""
 
-        data = self._call(
-            "obtenerUniOrgCurriculo",
-            {"cPerCodigo": self.ensure_student_code(), "nTipCur": kind},
-            page="/Modulos/Campus/MisCursos/Ca_Mc_CursosMatriculados.aspx",
-        )
-        return _as_records(data)
+        return api.methods.get_curricula(self._api, kind)
 
     def get_history(self) -> list[Mapping[str, Any]]:
         """Cursos de todos los periodos: recorre cada curricula del alumno."""
 
-        rows: list[Mapping[str, Any]] = []
-        seen: set[str] = set()
-        for curriculum in self.get_curricula():
-            data = self._call(
-                "ObtenerCursosByCurricula",
-                {
-                    "nCurCodigo": curriculum.get("nCurCodigo"),
-                    "cPerCodigo": "",
-                    "cTablas": "HISTORIAL_CURSOS,PERIODO_HISTORIAL_CURSOS",
-                },
-                page="/CampusVirtual/ua/Alumno/MisCursos/Alu_HistorialCursos.aspx",
-            )
-            if not isinstance(data, Mapping):
-                continue
-            for row in _as_records(data.get("HISTORIAL_CURSOS")):
-                key = str(row.get("nGruCodigo"))
-                if key not in seen:
-                    seen.add(key)
-                    rows.append(row)
-        return rows
+        return api.methods.get_history(self._api)
 
     def get_grades(self, group_id: int | str) -> CourseGrades:
         """Criterios del periodo abierto (``getNotasAlumnoGrupo``)."""
 
-        data = self._call("getNotasAlumnoGrupo", {"nGruCodigo": group_id})
-        if not isinstance(data, Mapping):
-            raise ProtocolError("Las notas del curso no tienen el formato esperado.")
-        return CourseGrades.from_api(data, group_id=group_id)
+        return api.methods.get_grades(self._api, group_id)
 
     def get_academic_summary(self) -> AcademicSummary:
         """Promedio oficial del tablero (``ObtenerDataAvanceCarrera``)."""
 
-        student = self.ensure_student_code()
-        current = self._call(
-            "ObtenerCurrriculasActuales", {"cPerCodigo": student}, page=TABLERO_PAGE
-        )
-        records = _as_records(current)
-        if not records and isinstance(current, Mapping):
-            # Sin clave conocida: la primera lista de filas es la de curriculas.
-            records = [
-                item
-                for value in current.values()
-                if isinstance(value, list)
-                for item in value
-                if isinstance(item, Mapping)
-            ]
-        enrollment = records[0].get("nPerAluRegCodigo") if records else None
-        if not enrollment:
-            raise ProtocolError("El tablero no devolvio la matricula del alumno.")
-        data = self._call(
-            "ObtenerDataAvanceCarrera",
-            {"cPerCodigo": "", "nPerAluRegCodigo": enrollment, "cTablas": TABLERO_TABLES},
-            page=TABLERO_PAGE,
-        )
-        if not isinstance(data, Mapping):
-            raise ProtocolError("El avance de carrera no tiene el formato esperado.")
-        return AcademicSummary.from_api(data)
+        return api.methods.get_academic_summary(self._api)
 
     def get_syllabus(self, group_id: int | str) -> list[SessionTopic]:
-        data = self.get_course_detail(group_id, 0)
-        topics: Iterable[Any] = ()
-        if isinstance(data, Mapping):
-            raw = data.get("silabo")
-            if isinstance(raw, list):
-                topics = raw
-        return [SessionTopic.from_api(item) for item in topics if isinstance(item, Mapping)]
+        return api.methods.get_syllabus(self._api, group_id)
 
     def get_schedule(self, group_id: int | str, *, course: str = "") -> list[ClassSession]:
         """Programacion del grupo: fechas, horarios y aula de cada sesion."""
 
-        data = self._call("getProgramacionAlumnoGrupo", {"nGruCodigo": group_id})
-        return [
-            ClassSession.from_api(item, group_id=group_id, course=course)
-            for item in _as_records(data)
-        ]
+        return api.methods.get_schedule(self._api, group_id, course=course)
 
     def get_session_resources(self, group_id: int | str, session: int) -> list[Resource]:
-        data = self.get_course_detail(group_id, session)
-        records = _as_records(data)
-        return [
-            Resource.from_api(item, self.base_url, session=session)
-            for item in records
-        ]
+        return api.methods.get_session_resources(self._api, group_id, session)
 
     def active_session_resources(self, group_id: int | str) -> list[Resource]:
         """Recursos de la sesion activa, con la lectura que ya trae el curso.
@@ -384,7 +197,7 @@ class CampusClient:
         su ``nSesion`` (docs/GUIA.md), asi que alcanza para no recorrer el resto.
         """
 
-        return self.get_session_resources(group_id, 0)
+        return api.methods.active_session_resources(self._api, group_id)
 
     def iter_session_resources(
         self,
@@ -399,10 +212,12 @@ class CampusClient:
         viene, se prueban 1..max_sessions y se corta tras N sesiones vacias.
         """
 
-        return list(
-            self.iter_session_resources_lazy(
-                group_id, sessions, stop_after_empty=stop_after_empty
-            )
+        return api.methods.iter_session_resources(
+            self._api,
+            group_id,
+            sessions,
+            stop_after_empty=stop_after_empty,
+            max_sessions=config.load_settings().max_sessions,
         )
 
     def iter_session_resources_lazy(
@@ -419,33 +234,13 @@ class CampusClient:
         carpeta sin recorrer el curso entero.
         """
 
-        if sessions:
-            numbers = list(sessions)
-            limit = 0
-        else:
-            numbers = [
-                topic.number for topic in self.get_syllabus(group_id) if topic.number
-            ]
-            if numbers:
-                limit = 0
-            else:
-                numbers = list(range(1, config.load_settings().max_sessions + 1))
-                limit = stop_after_empty
-
-        empty_run = 0
-        for number in numbers:
-            resources = [
-                item
-                for item in self.get_session_resources(group_id, number)
-                if item.kind != 0
-            ]
-            yield number, resources
-            if resources:
-                empty_run = 0
-            else:
-                empty_run += 1
-                if limit and empty_run >= limit:
-                    break
+        return api.methods.iter_session_resources_lazy(
+            self._api,
+            group_id,
+            sessions,
+            stop_after_empty=stop_after_empty,
+            max_sessions=config.load_settings().max_sessions,
+        )
 
     def upload_file(
         self,
@@ -460,37 +255,7 @@ class CampusClient:
         campus no llego a guardar nada (redireccion al login o HTTP 401).
         """
 
-        url = urljoin(self.base_url + "/", page.lstrip("/"))
-        request = Request(
-            url,
-            data=body,
-            headers={
-                **self.headers,
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Content-Type": content_type,
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": self._session.home_url,
-            },
-            method="POST",
-        )
-        try:
-            return self._send_upload(request)
-        except SessionExpiredError:
-            pass
-        except CampusHTTPError as exc:
-            if exc.status_code != 401:
-                raise
-        self._auth.expire()
-        self._auth.relogin()
-        return self._send_upload(request)
-
-    def _send_upload(self, request: Request) -> str:
-        with self._session.send(request) as response:
-            final_url = response.geturl()
-            raw = response.read().decode("utf-8", "replace")
-        if LOGIN_REDIRECT.search(final_url):
-            raise SessionExpiredError("La sesion del campus expiro.")
-        return raw
+        return api.post_raw(self._api, body, content_type=content_type, page=page)
 
     def describe(self) -> dict[str, Any]:
         return {

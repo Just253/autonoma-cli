@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 from xml.sax.saxutils import escape
 
-from .client import parse_json_text, unwrap
+from .api import parse_json_text, unwrap
 from .errors import ProtocolError
 
 UPLOAD_PAGE = "/GlobalAplication/FileUpload.ashx"

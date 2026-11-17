@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
+from types import SimpleNamespace
+from unittest import mock
 
 from autonoma_cli.client import CampusClient
 from autonoma_cli.errors import ProtocolError
@@ -89,6 +92,12 @@ TABLERO_TABLES_EXPECTED = (
 )
 
 
+def _student(code: str) -> SimpleNamespace:
+    """Auth minima: el codigo de alumno ya conocido, sin red."""
+
+    return SimpleNamespace(ensure_student_code=lambda: code)
+
+
 class FakeGradesClient(CampusClient):
     """Cliente con respuestas sinteticas: sin red, cookies ni datos reales."""
 
@@ -97,11 +106,11 @@ class FakeGradesClient(CampusClient):
         self.calls: list[tuple[str, dict, str]] = []
         self._grades = grades if grades is not None else GRADES_PAYLOAD
         self._curricula = curricula if curricula is not None else [{"nPerAluRegCodigo": 209901}]
+        self._api = replace(self._api, auth=_student("90000001"))
 
-    def ensure_student_code(self) -> str:
-        return "90000001"
-
-    def _call(self, method, payload=None, *, page="/Campus/Default.aspx", allow_relogin=True):
+    def respond(
+        self, ctx, method, payload=None, *, page="/Campus/Default.aspx", **kwargs
+    ):
         self.calls.append((method, dict(payload or {}), page))
         if method == "getNotasAlumnoGrupo":
             return self._grades
@@ -112,9 +121,19 @@ class FakeGradesClient(CampusClient):
         raise AssertionError(f"metodo inesperado: {method}")
 
 
-class GradesEndpointTests(unittest.TestCase):
+class FakeCalls:
+    """Pone la politica de llamadas de ``api.methods`` en manos del fake."""
+
+    def fake(self, client: FakeGradesClient) -> FakeGradesClient:
+        patcher = mock.patch("autonoma_cli.api.methods.call", client.respond)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return client
+
+
+class GradesEndpointTests(FakeCalls, unittest.TestCase):
     def test_maps_three_criteria(self) -> None:
-        client = FakeGradesClient()
+        client = self.fake(FakeGradesClient())
         grades = client.get_grades(90000001)
         self.assertEqual(client.calls[0][0], "getNotasAlumnoGrupo")
         self.assertEqual(client.calls[0][1], {"nGruCodigo": 90000001})
@@ -126,7 +145,7 @@ class GradesEndpointTests(unittest.TestCase):
         self.assertEqual([item.criterion for item in grades.items], ["EC", "EP", "EF"])
 
     def test_uncalled_criterion_has_no_value(self) -> None:
-        grades = FakeGradesClient().get_grades(90000001)
+        grades = self.fake(FakeGradesClient()).get_grades(90000001)
         ef = grades.items[2]
         self.assertEqual(ef.grade, "-")
         self.assertIsNone(ef.value)
@@ -137,7 +156,7 @@ class GradesEndpointTests(unittest.TestCase):
 
     def test_course_without_criteria(self) -> None:
         payload = {"fechaActualizado": "", "nPromTotal": "0", "porcentaje": "0", "notas": []}
-        grades = FakeGradesClient(grades=payload).get_grades(90000001)
+        grades = self.fake(FakeGradesClient(grades=payload)).get_grades(90000001)
         self.assertEqual(grades.items, [])
         self.assertEqual(grades.average, "0")
         self.assertEqual(grades.average_value, 0.0)
@@ -151,7 +170,7 @@ class GradesEndpointTests(unittest.TestCase):
             "porcentaje": "",
             "notas": [{"Criterio": "EC", "Peso": "", "nota": "", "nSesion": ""}],
         }
-        grades = FakeGradesClient(grades=payload).get_grades(90000001)
+        grades = self.fake(FakeGradesClient(grades=payload)).get_grades(90000001)
         self.assertEqual(grades.average, "")
         self.assertIsNone(grades.average_value)
         self.assertEqual(grades.percent, 0)
@@ -163,12 +182,12 @@ class GradesEndpointTests(unittest.TestCase):
 
     def test_unexpected_shape_raises_protocol_error(self) -> None:
         with self.assertRaises(ProtocolError):
-            FakeGradesClient(grades="texto").get_grades(90000001)
+            self.fake(FakeGradesClient(grades="texto")).get_grades(90000001)
 
 
-class AcademicSummaryTests(unittest.TestCase):
+class AcademicSummaryTests(FakeCalls, unittest.TestCase):
     def test_reads_tablero_with_two_cycles(self) -> None:
-        summary = FakeGradesClient().get_academic_summary()
+        summary = self.fake(FakeGradesClient()).get_academic_summary()
         self.assertIsInstance(summary, AcademicSummary)
         self.assertEqual(summary.accumulated, 15.25)
         self.assertEqual(summary.weighted, 15.14)
@@ -190,7 +209,7 @@ class AcademicSummaryTests(unittest.TestCase):
         self.assertEqual(summary.credits_weighted, 7.0)
 
     def test_uses_tablero_endpoint_and_frozen_tables(self) -> None:
-        client = FakeGradesClient()
+        client = self.fake(FakeGradesClient())
         client.get_academic_summary()
         methods = [method for method, _, _ in client.calls]
         self.assertEqual(
@@ -206,7 +225,7 @@ class AcademicSummaryTests(unittest.TestCase):
         self.assertEqual(client.calls[1][2], page)
 
     def test_without_enrollment_raises(self) -> None:
-        client = FakeGradesClient(curricula=[])
+        client = self.fake(FakeGradesClient(curricula=[]))
         with self.assertRaises(ProtocolError):
             client.get_academic_summary()
 

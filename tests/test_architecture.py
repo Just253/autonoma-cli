@@ -22,7 +22,7 @@ MODULES = {
 }
 # Duenos legitimos de JSON, uno por formato; el resto usa cache.ensure o render.
 # net.py lee y escribe pinned-ip.json, el pin de la IP que valido certificado.
-LOADS = {"cache.py", "client.py", "downloader.py", "net.py"}
+LOADS = {"api/call.py", "api/json.py", "cache.py", "downloader.py", "net.py"}
 DUMPS = LOADS | {"render/text.py"}
 GRAPH = {"cli.py", "__main__.py"}  # unicos que pueden importar cli
 
@@ -85,7 +85,7 @@ SIZE_RULES = (
 MODULE_MAX = 250
 SIZE_RATCHET = {
     "cli.py": 251,  # ya pasaba el catch-all; su regla propia lo deja en 260
-    "client.py": 502,  # 858 -> 732 -> 673 -> 503 -> 502; solo puede bajar
+    "client.py": 267,  # 858 -> 732 -> 673 -> 503 -> 502 -> 267; solo puede bajar
     "downloader.py": 323,  # solo puede bajar
 }
 
@@ -107,13 +107,16 @@ ALLOWED_LAYERS = {
     }),
     "render/": frozenset({"render", "models", "ui"}),
     "uploader.py": frozenset({
-        "client", "errors", "models", "uploadcheck", "uploadform",
+        "api", "client", "errors", "models", "uploadcheck", "uploadform",
     }),
-    "uploadform.py": frozenset({"client", "errors"}),
+    "uploadform.py": frozenset({"api", "errors"}),
     "uploadcheck.py": frozenset({"errors", "ui"}),
     "downloader.py": frozenset({"models", "errors", "net"}),
     "auth/": frozenset({"auth", "models", "errors"}),
-    "client.py": frozenset({"auth", "config", "models", "errors", "session"}),
+    "api/": frozenset({"api", "auth", "models", "errors"}),
+    "client.py": frozenset({
+        "api", "auth", "config", "models", "errors", "session",
+    }),
     "session.py": frozenset({"net", "errors"}),
     "selectors.py": frozenset({"models", "errors"}),
     "cache.py": frozenset({"config"}),
@@ -131,7 +134,6 @@ KNOWN_EDGES = {
     ("render/downloads.py", "downloader"): "human_size deberia vivir en ui.py",
     ("render/upload.py", "downloader"): "human_size deberia vivir en ui.py",
     ("uploadcheck.py", "downloader"): "human_size deberia vivir en ui.py",
-    ("uploader.py", "client._call"): "falta client.call() publico",
 }
 
 # Atributos privados y el modulo que los define. Usarlos desde otro modulo
