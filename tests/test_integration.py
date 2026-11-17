@@ -68,9 +68,11 @@ SILABO = [
 
 PDF_BYTES = b"%PDF-1.4\n% fake\n1 0 obj\n<<>>\nendobj\n"
 
-# Cabeceras de cada pedido de archivo: prueba que la cookie viaja por el jar y
-# que hay un solo User-Agent, el del cliente.
+# Cabeceras de cada pedido de archivo: prueba que la descarga no manda la
+# cookie y que hay un solo User-Agent, el del cliente.
 UPLOADS: list[dict[str, str]] = []
+# Cabeceras de cada WebMethod: ahi si tiene que viajar la cookie de sesion.
+CALLS: list[dict[str, str]] = []
 
 
 def resource(session: int, title: str, url: str, kind: int = 2) -> dict:
@@ -137,6 +139,7 @@ class FakeCampus(BaseHTTPRequestHandler):
             return
 
         payload = json.loads(raw.decode("utf-8")) if raw else {}
+        CALLS.append({"cookie": self.headers.get("Cookie", ""), "path": path})
 
         if path.endswith("/Alu_ObtenerCursosActuales"):
             self._send(200, json.dumps({"d": [COURSE]}).encode("utf-8"), "application/json")
@@ -248,6 +251,12 @@ class FakeCampusTests(unittest.TestCase):
         self.assertEqual(
             {seen["user_agent"] for seen in UPLOADS},
             {self.client.headers["User-Agent"]},
+        )
+        # La API si necesita la sesion: los WebMethods llevan la cookie.
+        self.assertTrue(CALLS)
+        self.assertTrue(
+            all("ASP.NET_SessionId=abc123" in seen["cookie"] for seen in CALLS),
+            CALLS,
         )
 
         manifest = Manifest(self.folder)

@@ -1,9 +1,9 @@
 """Descarga de un archivo por el transporte de la sesion.
 
 El pedido lo hace ``send`` (``CampusClient.send``): la sesion aplica la pausa
-entre pedidos, el pin de IP y las cookies del jar, y traduce los errores de red
-a ``CampusError``. Aca solo se escribe el archivo, se calcula el sha256 y se
-decide que error merece otro intento.
+entre pedidos y el pin de IP, traduce los errores de red a ``CampusError`` y
+solo manda la cookie cuando la ruta la necesita. Aca se escribe el archivo, se
+calcula el sha256 y se decide que error merece otro intento.
 """
 
 from __future__ import annotations
@@ -40,7 +40,8 @@ def download_file(
     Devuelve (bytes, sha256). Reintenta ante error de red o HTTP 5xx; un 4xx
     que no sea 408/429 corta el reintento. El tiempo limite lo aplica el
     transporte de la sesion. Los archivos de ``/uploads`` son publicos, asi que
-    el pedido va sin la cookie de sesion.
+    el pedido va sin la cookie de sesion; si la ruta resultara protegida y
+    redirige al login, se reintenta una vez con la sesion.
     """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -50,12 +51,15 @@ def download_file(
         request_headers["Referer"] = referer
 
     last_error: Exception | None = None
-    for attempt in range(1, max(1, retries) + 1):
+    limit = max(1, retries)
+    cookies = False
+    attempt = 1
+    while attempt <= limit:
         try:
             request = Request(url, headers=request_headers)
             digest = hashlib.sha256()
             size = 0
-            with send(request, cookies=False) as response, partial.open("wb") as handle:
+            with send(request, cookies=cookies) as response, partial.open("wb") as handle:
                 if LOGIN_REDIRECT.search(response.geturl()):
                     raise SessionExpiredError("La sesion del campus expiro.")
                 while True:
@@ -70,9 +74,13 @@ def download_file(
             os.replace(partial, destination)
             return size, digest.hexdigest()
         except SessionExpiredError:
-            # Una sesion vencida no se arregla reintentando la misma descarga.
             _discard(partial)
-            raise
+            if cookies:
+                raise
+            # La ruta resulto protegida: un solo reintento con la sesion, que
+            # no consume intento ni duerme.
+            cookies = True
+            continue
         except CampusHTTPError as exc:
             last_error = exc
             _discard(partial)
@@ -83,6 +91,7 @@ def download_file(
             _discard(partial)
         if attempt < retries:
             time.sleep(1.5 * attempt)
+        attempt += 1
     raise CampusError(f"No se pudo descargar {url}: {last_error}")
 
 

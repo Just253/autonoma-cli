@@ -178,9 +178,10 @@ GET /uploads/<url>
 - Algunos campos traen sufijos `||…` que hay que descartar.
 - `cSilabo` viene como ruta absoluta al dominio (`/UploadsEnvioEmailPDF/…`), no
   como nombre relativo.
-- Los archivos de `/uploads/` son **públicos**: no requieren la cookie de
-  sesión (verificado el 2026-11-17 sobre documentos, PDFs y el sílabo). Lo que
-  necesita cookie es la API que lista los recursos, no el archivo.
+- Los archivos de `/uploads/` y de `/UploadsEnvioEmailPDF/` (el sílabo) son
+  **públicos**: no requieren la cookie de sesión (verificado el 2026-11-17 sobre
+  documentos, PDFs y el sílabo). Lo que necesita cookie es la API que lista los
+  recursos, no el archivo.
 - La extensión real puede deducirse de `clase` (`far fa-file-pdf` → `.pdf`)
   cuando la URL no la trae.
 

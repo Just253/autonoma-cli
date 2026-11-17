@@ -233,9 +233,19 @@ class DownloadFileTests(unittest.TestCase):
         send = FakeSend(login)
         with self.assertRaises(SessionExpiredError):
             download_file(send, "https://x/a.pdf", self.target, headers=HEADERS, retries=3)
-        self.assertEqual(len(send.requests), 1)
+        self.assertEqual(len(send.requests), 2)
+        self.assertEqual(send.cookies, [False, True], "reintenta una vez con la sesion")
         self.assertFalse(self.target.exists())
         self.assertFalse(self.partial.exists())
+
+    def test_la_ruta_protegida_se_reintenta_con_la_sesion(self) -> None:
+        login = FakeResponse(b"<html>login</html>", url="https://x/Campus/Login.aspx")
+        body = b"%PDF-1.4 datos"
+        send = FakeSend(login, FakeResponse(body, url="https://x/a.pdf"))
+        size, _ = download_file(send, "https://x/a.pdf", self.target, headers=HEADERS)
+        self.assertEqual(size, len(body))
+        self.assertEqual(send.cookies, [False, True])
+        self.assertEqual(self.target.read_bytes(), body)
 
 
 if __name__ == "__main__":

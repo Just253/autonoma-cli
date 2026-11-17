@@ -60,7 +60,7 @@ class _Transport:
         self.responses = list(responses)
         self.requests: list[Any] = []
 
-    def send(self, request: Any) -> _FakeResponse:
+    def send(self, request: Any, *, cookies: bool = True) -> _FakeResponse:
         self.requests.append(request)
         return self.responses.pop(0)
 
