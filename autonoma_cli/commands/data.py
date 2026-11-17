@@ -10,20 +10,15 @@ from ..errors import UsageError
 from ..models import ClassSession, Course, HistoryCourse, Resource
 
 
-def _student(client: CampusClient) -> str:
-    """Identidad de las claves de cache: dos alumnos no comparten entradas."""
-
-    return client.student_code or "anon"
-
-
 def catalog(client: CampusClient, *, refresh: bool = False) -> list[Course]:
     """Cursos del periodo con cache de 6 horas (el campus responde lento)."""
-    items = cache.ensure(
-        cache.for_campus(client.base_url),
-        f"cursos:{_student(client)}",
+    items = cache.ensure_for(
+        client.base_url,
+        client.student_code,
+        "cursos",
         ttl=cache.MAX_AGE_CURSOS,
         fetch=lambda: [dict(course.raw or {}) for course in client.get_courses()],
-        force=refresh,
+        refresh=refresh,
     )
     records = items if isinstance(items, list) else []
     return [Course.from_api(item, client.base_url) for item in records if isinstance(item, dict)]
@@ -33,19 +28,19 @@ def schedule(
     client: CampusClient, courses: Sequence[Course], *, refresh: bool = False
 ) -> list[ClassSession]:
     """Programacion de todos los cursos, con cache de 6 horas por grupo."""
-    store = cache.for_campus(client.base_url)
-    student = _student(client)
     entries: list[ClassSession] = []
     for course in courses:
-        records = cache.ensure(
-            store,
-            f"horario:{student}:{course.group_id}",
+        records = cache.ensure_for(
+            client.base_url,
+            client.student_code,
+            "horario",
             ttl=cache.MAX_AGE_HORARIO,
             fetch=lambda course=course: [
                 dict(entry.raw or {})
                 for entry in client.get_schedule(course.group_id, course=course.name)
             ],
-            force=refresh,
+            refresh=refresh,
+            suffix=str(course.group_id),
         )
         entries.extend(
             ClassSession.from_api(item, group_id=course.group_id, course=course.name)
@@ -72,9 +67,15 @@ def resources_of(
             for number, resources in client.iter_session_resources(course.group_id)
         ]
 
-    pairs = cache.ensure_pairs(
-        cache.for_campus(client.base_url), f"recursos:{_student(client)}:{course.group_id}",
-        ttl=cache.MAX_AGE_RECURSOS, fetch=fetch, force=refresh)
+    pairs = cache.ensure_pairs_for(
+        client.base_url,
+        client.student_code,
+        "recursos",
+        ttl=cache.MAX_AGE_RECURSOS,
+        fetch=fetch,
+        refresh=refresh,
+        suffix=str(course.group_id),
+    )
     return [(number, [Resource.from_api(item, client.base_url, session=number) for item in items])
             for number, items in pairs]
 
@@ -82,12 +83,13 @@ def resources_of(
 def history(client: CampusClient, *, refresh: bool = False) -> list[HistoryCourse]:
     """Cursos de todos los periodos, con cache de 6 horas."""
 
-    items = cache.ensure(
-        cache.for_campus(client.base_url),
-        f"historial:{_student(client)}",
+    items = cache.ensure_for(
+        client.base_url,
+        client.student_code,
+        "historial",
         ttl=cache.MAX_AGE_CURSOS,
         fetch=lambda: [dict(row) for row in client.get_history()],
-        force=refresh,
+        refresh=refresh,
     )
     records = items if isinstance(items, list) else []
     return [HistoryCourse.from_api(item) for item in records if isinstance(item, dict)]

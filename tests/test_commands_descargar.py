@@ -80,8 +80,8 @@ class ExpiredClient(FakeDownloadClient):
         raise SessionExpiredError("La sesion del campus expiro.")
 
 
-class DescargarCacheTests(IsolatedHomeMixin, unittest.TestCase):
-    """La segunda corrida no pide listas; --refresh y --sesion si piden."""
+class _CacheCase(IsolatedHomeMixin):
+    """Base con cliente falso y HOME temporal; sin tests propios."""
 
     def setUp(self) -> None:
         self.make_home()
@@ -97,6 +97,10 @@ class DescargarCacheTests(IsolatedHomeMixin, unittest.TestCase):
     def run_main(self, *argv: str) -> int:
         with contextlib.redirect_stdout(io.StringIO()):
             return main(["--out", str(self.out), *argv])
+
+
+class DescargarCacheTests(_CacheCase, unittest.TestCase):
+    """La segunda corrida no pide listas; --refresh y --sesion si piden."""
 
     def test_second_run_uses_the_cached_lists(self) -> None:
         self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
@@ -153,6 +157,44 @@ class ExpiredSessionTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(
             self.client.sends, 2, "un reintento con cookie y se corta el resto del plan"
         )
+
+
+class RecursosCacheTests(_CacheCase, unittest.TestCase):
+    """`recursos` usa la misma cache y respeta --refresh."""
+
+    def test_recursos_refresh_reads_the_lists_again(self) -> None:
+        self.assertEqual(self.run_main("recursos", str(GROUP)), 0)
+        self.assertEqual(self.run_main("recursos", str(GROUP), "--refresh"), 0)
+        self.assertEqual(self.client.list_calls, 2)
+
+
+class IdentityTests(_CacheCase, unittest.TestCase):
+    """Sin codigo de alumno no se cachea; dos alumnos no comparten entradas."""
+
+    def test_sin_codigo_no_cachea(self) -> None:
+        self.client.student_code = ""
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        self.assertEqual(self.client.list_calls, 2)
+
+    def test_dos_alumnos_no_comparten_la_lista(self) -> None:
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        self.client.student_code = "2024000002"
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        self.assertEqual(self.client.list_calls, 2)
+
+    def test_un_par_a_medio_escribir_se_vuelve_a_pedir(self) -> None:
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        path = config.cache_dir() / cache.CACHE_FILE
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["entries"][RESOURCES_KEY] = {
+            "at": 1e12,
+            "value": [[1, [{"cTitulo": "OK"}, "basura"]]],
+        }
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+        self.assertEqual(self.run_main("descargar", str(GROUP), "--seco"), 0)
+        self.assertEqual(self.client.list_calls, 2, "el par roto invalida el documento")
 
 
 if __name__ == "__main__":

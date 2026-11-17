@@ -13,7 +13,7 @@ def run_recursos(client: CampusClient, args: argparse.Namespace) -> int:
     courses = catalog(client, refresh=args.refresh)
     course = resolve_any(client, courses, args.curso, refresh=args.refresh)
     sessions = selectors.parse_sessions(args.sesion)
-    grouped = resources_of(client, course, sessions)
+    grouped = resources_of(client, course, sessions, refresh=args.refresh)
 
     flat = [item for _, resources in grouped for item in resources]
     if args.json:

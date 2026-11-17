@@ -141,15 +141,78 @@ def ensure_pairs(
     return pairs
 
 
+def _student_key(student: str, name: str, suffix: str) -> str:
+    return f"{name}:{student}:{suffix}" if suffix else f"{name}:{student}"
+
+
+def ensure_for(
+    base_url: str,
+    student: str,
+    name: str,
+    *,
+    ttl: float,
+    fetch: Callable[[], Any],
+    refresh: bool = False,
+    suffix: str = "",
+) -> Any:
+    """Como ``ensure`` pero por alumno; sin identidad no cachea.
+
+    Dos cuentas en la misma carpeta no pueden compartir una entrada, y una
+    sesion sin codigo no tiene con que distinguirse.
+    """
+
+    if not student:
+        return fetch()
+    return ensure(
+        for_campus(base_url),
+        _student_key(student, name, suffix),
+        ttl=ttl,
+        fetch=fetch,
+        force=refresh,
+    )
+
+
+def ensure_pairs_for(
+    base_url: str,
+    student: str,
+    name: str,
+    *,
+    ttl: float,
+    fetch: Callable[[], Any],
+    refresh: bool = False,
+    suffix: str = "",
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """Como ``ensure_pairs`` pero por alumno; sin identidad no cachea."""
+
+    if not student:
+        return _pairs(fetch()) or []
+    return ensure_pairs(
+        for_campus(base_url),
+        _student_key(student, name, suffix),
+        ttl=ttl,
+        fetch=fetch,
+        force=refresh,
+    )
+
+
 def _pairs(value: Any) -> list[tuple[int, list[dict[str, Any]]]] | None:
-    """Pares (numero, registros) de un valor guardado; ``None`` si no sirve."""
+    """Pares (numero, registros) de un valor guardado; ``None`` si no sirve.
+
+    Un par a medio escribir invalida el documento entero: es preferible volver
+    a pedir que arrastrar una lista recortada a los comandos.
+    """
 
     if not isinstance(value, list):
         return None
-    try:
-        return [
-            (int(number), [item for item in items if isinstance(item, dict)])
-            for number, items in value
-        ]
-    except (TypeError, ValueError):
-        return None
+    pairs: list[tuple[int, list[dict[str, Any]]]] = []
+    for entry in value:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+            return None
+        number, items = entry
+        if not isinstance(items, list) or not all(isinstance(item, dict) for item in items):
+            return None
+        try:
+            pairs.append((int(number), items))
+        except (TypeError, ValueError):
+            return None
+    return pairs
