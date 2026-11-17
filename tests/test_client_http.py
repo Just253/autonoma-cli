@@ -14,6 +14,13 @@ BASE = "https://campus-de-ejemplo.edu"
 HOME_URL = f"{BASE}/Campus/Default.aspx"
 
 
+class FalsySession(FakeSession):
+    """Sesion valida que se evalua como falsa: el cliente no debe descartarla."""
+
+    def __bool__(self) -> bool:
+        return False
+
+
 class CertificateMismatchTests(unittest.TestCase):
     """El ALB del campus rota IPs: una IP vieja responde con otro certificado."""
 
@@ -58,6 +65,16 @@ class DelegationTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertEqual(client.retries, 5)
         self.assertEqual(client.timeout, 3.0)
         self.assertEqual(client.delay, 0.25)
+        self.assertEqual(client.describe()["cookies_file"], session.cookies_path)
+
+    def test_una_sesion_falsy_igual_se_usa(self) -> None:
+        session = FalsySession(timeout=3.0, delay=0.25, home_url=f"{BASE}/Campus/Otra.aspx")
+        client = CampusClient(BASE, timeout=99.0, delay=9.0, session=session)
+
+        self.assertFalse(bool(session))
+        self.assertEqual(client.timeout, 3.0)
+        self.assertEqual(client.delay, 0.25)
+        self.assertEqual(client.referer, session.home_url)
         self.assertEqual(client.describe()["cookies_file"], session.cookies_path)
 
     def test_referer_sigue_el_home_de_la_sesion(self) -> None:

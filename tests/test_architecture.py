@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -333,6 +334,17 @@ def allowed_layers(name: str) -> frozenset[str] | None:
     return None
 
 
+def dependency_edges() -> set[tuple[str, str]]:
+    """Aristas de todo el paquete: imports que la tabla prohibe y privados ajenos."""
+
+    edges: set[tuple[str, str]] = set()
+    for name in MODULES:
+        allowed = allowed_layers(name) or frozenset()
+        edges |= {(name, layer) for layer in imported_layers(name) - allowed}
+        edges |= attribute_edges(name)
+    return edges
+
+
 class ArchitectureTests(unittest.TestCase):
     def test_modules_stay_small(self) -> None:
         self.assertIn(
@@ -422,11 +434,7 @@ class ArchitectureTests(unittest.TestCase):
             "ALLOWED_LAYERS en el mismo commit que la crea; si no, la guardia "
             "queda ciega justo donde aparece el codigo nuevo.",
         )
-        edges: set[tuple[str, str]] = set()
-        for name in MODULES:
-            allowed = allowed_layers(name) or frozenset()
-            edges |= {(name, layer) for layer in imported_layers(name) - allowed}
-            edges |= attribute_edges(name)
+        edges = dependency_edges()
         new = sorted(edges - set(KNOWN_EDGES))
         self.assertFalse(
             new,
@@ -483,6 +491,18 @@ class ArchitectureTests(unittest.TestCase):
             KNOWN_EDGES,
             "client._session no tiene excepcion: la guardia tiene que fallar",
         )
+
+    def test_dependency_edges_collects_private_attributes(self) -> None:
+        """El helper que alimenta la guardia no puede saltarse los atributos."""
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "synthetic.py"
+        path.write_text("client._session.send(request)\n", encoding="utf-8")
+        MODULES["synthetic.py"] = path
+        self.addCleanup(MODULES.pop, "synthetic.py")
+
+        self.assertIn(("synthetic.py", "client._session"), dependency_edges())
 
     def test_size_ratchet_is_exact(self) -> None:
         """El tope congelado es el tamano medido: si encoge, baja en el commit."""
