@@ -47,7 +47,7 @@ Valen antes o después del comando: `autonoma --json cursos` y
 | `--delay SEG` | Pausa entre peticiones (0.5 por defecto). |
 | `--out CARPETA` | Destino de las descargas (`./descargas` por defecto). Solo `descargar` y `todo`. |
 | `--json` | Salida JSON (ver [JSON.md](JSON.md)). |
-| `--refresh` | Ignora la caché de cursos, horario e historial. |
+| `--refresh` | Ignora la caché de cursos, horario, historial y recursos. |
 | `--no-color` | Sin ANSI, útil al capturar salida. |
 | `-v`, `--verbose` | Más detalle. |
 | `--version` | Versión instalada. |

@@ -31,7 +31,7 @@ autonoma_cli/
 ├── uploader.py         # plan y corrida de una subida (una subida y un registro)
 ├── uploadcheck.py      # valida archivo y textos antes de tocar la red
 ├── uploadform.py       # contrato del campus: multipart, XML y respuestas
-├── cache.py            # cache.json (cursos, horario, historial)
+├── cache.py            # cache.json (cursos, horario, historial y recursos)
 ├── render/             # un tema por archivo: text, courses, schedule, resources, downloads, grades, upload
 ├── selectors.py        # filtros de curso, sesión, tipo y fechas
 ├── ui.py               # tablas y color
