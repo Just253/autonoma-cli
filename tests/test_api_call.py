@@ -8,7 +8,8 @@ import sys
 import unittest
 from unittest import mock
 
-from autonoma_cli.api import ApiContext, call, call_once, post_raw
+from autonoma_cli.api import ApiContext, call_once, post_raw
+from autonoma_cli.api.call import call
 from autonoma_cli.errors import (
     AuthenticationError,
     CampusError,
@@ -217,6 +218,16 @@ class PackageTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "get_courses")
+
+    def test_el_paquete_no_tapa_el_modulo_call(self) -> None:
+        """``api.call`` es el modulo: si fuera la funcion, no tendria ``call``."""
+
+        from autonoma_cli import api
+
+        self.assertTrue(
+            hasattr(api.call, "call"),
+            "api.call debe apuntar al modulo, no a la funcion",
+        )
 
 
 if __name__ == "__main__":

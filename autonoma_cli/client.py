@@ -129,7 +129,7 @@ class CampusClient:
         ejecutar el metodo.
         """
 
-        return api.call(
+        return api.call.call(
             self._api,
             method,
             payload,

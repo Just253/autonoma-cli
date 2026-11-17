@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from . import methods
-from .call import ApiContext, call, call_once, post_raw
+from .call import ApiContext, call_once, post_raw
 from .json import parse_json_text, records, unwrap
 
 __all__ = [
     "ApiContext",
-    "call",
     "call_once",
     "methods",
     "parse_json_text",

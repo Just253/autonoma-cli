@@ -30,7 +30,11 @@ EXPIRED = "La sesion del campus expiro."
 
 @dataclass(frozen=True)
 class ApiContext:
-    """Lo que una llamada necesita del cliente, sin estado propio."""
+    """Lo que una llamada necesita del cliente, sin estado propio.
+
+    ``base_url`` y ``retries`` se copian al construir el contexto: cambiarlos
+    despues en el cliente no altera las llamadas ya armadas.
+    """
 
     base_url: str
     headers: Mapping[str, str]
