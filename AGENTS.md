@@ -47,7 +47,8 @@ README ni en la skill; enlazá.
 ## Mapa rápido del código
 
 `cli.py` (parser) → `commands/` (un módulo por tema) → `cache`, `render/`,
-`selectors`, `client`, `files/` → `config`, `models/`, `errors`, `ui`.
+`selectors`, `client`, `files/`; `client` delega en `api/`, `auth/`,
+`session.py` y `net.py`; todos apoyan en `config`, `models/`, `errors`, `ui`.
 Detalle en [docs/DESARROLLO.md](docs/DESARROLLO.md).
 
 La skill global `autonoma-campus` vive fuera del repo

@@ -71,6 +71,11 @@ cosa. Si algo falla, el mensaje dice qué hacer. Reglas principales:
   `config/io.py`.
 - Solo `cli.py` importa `commands`; solo `cli.py` y `__main__.py` importan
   `cli.py`.
+- Cada módulo tiene su fila en `ALLOWED_LAYERS` y solo importa las capas de su
+  lista: un módulo nuevo sin fila rompe la guardia. Las excepciones viven en
+  `KNOWN_EDGES` y `PRIVATE_IMPORTS_OK`, hoy vacías, y solo encogen.
+  `SIZE_RATCHET` fija el tamaño exacto de los módulos que ya pasaban el
+  catch-all: si encogen, el tope baja en el mismo commit.
 - Todo `run_*` recibe `client` primero y se reexporta en `commands/__init__.py`.
 - `CampusClient` se instancia únicamente en `commands/base.py`.
 - Cada subpaquete tiene `__init__.py` (si no, el wheel no lo incluye).
