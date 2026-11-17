@@ -99,3 +99,12 @@ autonoma whoami
 - El historial no consulta periodos que el campus no devuelva.
 - Respeta el ritmo del servidor (`--delay`, 0.5 s por defecto). No lo bajes sin
   motivo.
+
+## Licencia
+
+[MIT](LICENSE). Podés usarlo, modificarlo y redistribuirlo conservando el aviso
+de copyright. Se entrega **sin garantía**.
+
+Es un proyecto personal: automatiza acciones sobre tu propia cuenta y no
+reemplaza los términos de uso del Campus Virtual. Respetarlos es parte de usar
+la herramienta.

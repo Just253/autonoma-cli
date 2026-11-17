@@ -8,11 +8,13 @@ dynamic = ["version"]
 description = "CLI para ver cursos y descargar archivos del Campus Virtual de la Universidad Autonoma del Peru"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
 authors = [{ name = "Just253" }]
 keywords = ["autonoma", "campus", "cli", "aspnet", "descargas"]
 classifiers = [
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
@@ -28,6 +30,11 @@ autonoma = "autonoma_cli.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Just253/autonoma-cli"
+Source = "https://github.com/Just253/autonoma-cli"
+Issues = "https://github.com/Just253/autonoma-cli/issues"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [tool.setuptools.packages.find]
 include = ["autonoma_cli*"]
