@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import methods
+from . import methods, resources
 from .call import ApiContext, call_once, post_raw
 from .json import parse_json_text, records, unwrap
 
@@ -13,5 +13,6 @@ __all__ = [
     "parse_json_text",
     "post_raw",
     "records",
+    "resources",
     "unwrap",
 ]

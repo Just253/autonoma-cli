@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from autonoma_cli.api import ApiContext, methods
+from autonoma_cli.api import ApiContext, methods, resources
 from autonoma_cli.errors import ProtocolError
 from support.session import FakeSession
 
@@ -220,20 +220,20 @@ class GradeTests(FakeCalls):
 
 class ResourceTests(FakeCalls):
     def test_get_session_resources_resuelve_la_url(self) -> None:
-        resources, calls = self.run_calls(
+        resources_, calls = self.run_calls(
             {"getInformationDetailCurso": [resource(1)]},
-            methods.get_session_resources,
+            resources.get_session_resources,
             _ctx(),
             90000001,
             1,
         )
-        self.assertEqual(resources[0].url, f"{BASE}/uploads/a.pdf")
+        self.assertEqual(resources_[0].url, f"{BASE}/uploads/a.pdf")
         self.assertEqual(calls[0][1]["nSesion"], 1)
 
     def test_la_sesion_activa_es_la_cero(self) -> None:
         _, calls = self.run_calls(
             {"getInformationDetailCurso": [resource(0)]},
-            methods.active_session_resources,
+            resources.active_session_resources,
             _ctx(),
             90000001,
         )
@@ -249,7 +249,7 @@ class ResourceTests(FakeCalls):
             return [resource(2, 4)]
 
         pairs, _ = self.run_calls(
-            responses, methods.iter_session_resources, _ctx(), 90000001, max_sessions=5
+            responses, resources.iter_session_resources, _ctx(), 90000001, max_sessions=5
         )
         self.assertEqual(
             [(number, [item.kind for item in items]) for number, items in pairs],
@@ -259,7 +259,7 @@ class ResourceTests(FakeCalls):
     def test_iter_usa_las_sesiones_pedidas_sin_leer_el_silabo(self) -> None:
         pairs, calls = self.run_calls(
             {"getInformationDetailCurso": [resource(5)]},
-            methods.iter_session_resources,
+            resources.iter_session_resources,
             _ctx(),
             90000001,
             [5],
@@ -271,7 +271,7 @@ class ResourceTests(FakeCalls):
     def test_iter_sin_silabo_prueba_max_sessions_y_corta(self) -> None:
         pairs, calls = self.run_calls(
             {"getInformationDetailCurso": []},
-            methods.iter_session_resources,
+            resources.iter_session_resources,
             _ctx(),
             90000001,
             max_sessions=5,
@@ -287,7 +287,7 @@ class ResourceTests(FakeCalls):
             return [resource(payload["nSesion"])]
 
         def first(ctx):
-            return next(methods.iter_session_resources_lazy(ctx, 90000001, [1, 2, 3], max_sessions=5))
+            return next(resources.iter_session_resources_lazy(ctx, 90000001, [1, 2, 3], max_sessions=5))
 
         pair, _ = self.run_calls(responses, first, _ctx())
         self.assertEqual(pair[0], 1)

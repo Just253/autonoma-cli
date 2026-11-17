@@ -6,7 +6,6 @@ import argparse
 
 from .. import render, selectors, ui
 from ..client import CampusClient
-from ..models import Resource
 from .data import catalog, resolve_any
 
 
@@ -65,17 +64,9 @@ def run_cursos(client: CampusClient, args: argparse.Namespace) -> int:
 def run_curso(client: CampusClient, args: argparse.Namespace) -> int:
     courses = catalog(client, refresh=args.refresh)
     course = resolve_any(client, courses, args.curso, refresh=args.refresh)
-    topics = client.get_syllabus(course.group_id)
-    detail = client.get_course_detail(course.group_id, 0)
-    active_resources: list[Resource] = []
-    if isinstance(detail, dict):
-        raw_records = detail.get("recursos")
-        if isinstance(raw_records, list):
-            active_resources = [
-                Resource.from_api(item, client.base_url)
-                for item in raw_records
-                if isinstance(item, dict)
-            ]
+    overview = client.course_overview(course.group_id)
+    topics = overview.topics
+    active_resources = overview.resources
 
     if args.json:
         render.emit_json(

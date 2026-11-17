@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonoma_cli import cache, config
+from autonoma_cli.api.methods import CourseOverview
 from autonoma_cli.models import ClassSession, Course
 
 BASE = "https://virtual.autonoma.edu.pe"
@@ -71,6 +72,9 @@ class FakeClient:
 
     def get_course_detail(self, group_id: object, session: int) -> dict:
         return {}
+
+    def course_overview(self, group_id: object) -> CourseOverview:
+        return CourseOverview(topics=[], resources=[])
 
     def iter_session_resources(self, group_id: object) -> list:
         return []

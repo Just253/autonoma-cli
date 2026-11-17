@@ -187,17 +187,12 @@ class CampusClient:
         return api.methods.get_schedule(self._api, group_id, course=course)
 
     def get_session_resources(self, group_id: int | str, session: int) -> list[Resource]:
-        return api.methods.get_session_resources(self._api, group_id, session)
+        return api.resources.get_session_resources(self._api, group_id, session)
 
     def active_session_resources(self, group_id: int | str) -> list[Resource]:
-        """Recursos de la sesion activa, con la lectura que ya trae el curso.
+        """Recursos de la sesion activa: ``getInformationDetailCurso(0)``."""
 
-        ``getInformationDetailCurso`` con ``nSesion=0`` devuelve el silabo y los
-        recursos de la semana en curso en una sola peticion. Las carpetas traen
-        su ``nSesion`` (docs/GUIA.md), asi que alcanza para no recorrer el resto.
-        """
-
-        return api.methods.active_session_resources(self._api, group_id)
+        return api.resources.active_session_resources(self._api, group_id)
 
     def iter_session_resources(
         self,
@@ -212,7 +207,7 @@ class CampusClient:
         viene, se prueban 1..max_sessions y se corta tras N sesiones vacias.
         """
 
-        return api.methods.iter_session_resources(
+        return api.resources.iter_session_resources(
             self._api,
             group_id,
             sessions,
@@ -234,13 +229,18 @@ class CampusClient:
         carpeta sin recorrer el curso entero.
         """
 
-        return api.methods.iter_session_resources_lazy(
+        return api.resources.iter_session_resources_lazy(
             self._api,
             group_id,
             sessions,
             stop_after_empty=stop_after_empty,
             max_sessions=config.load_settings().max_sessions,
         )
+
+    def course_overview(self, group_id: int | str) -> api.methods.CourseOverview:
+        """Silabo y recursos de la sesion activa, con una sola peticion."""
+
+        return api.methods.course_overview(self._api, group_id)
 
     def upload_file(
         self,
