@@ -103,7 +103,7 @@ autonoma whoami
 ## Licencia
 
 [MIT](LICENSE). Podés usarlo, modificarlo y redistribuirlo conservando el aviso
-de copyright. Se entrega **sin garantía**.
+de copyright y el texto de la licencia. Se entrega **sin garantía**.
 
 Es un proyecto personal: automatiza acciones sobre tu propia cuenta y no
 reemplaza los términos de uso del Campus Virtual. Respetarlos es parte de usar
