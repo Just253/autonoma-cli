@@ -11,6 +11,7 @@ from urllib.parse import parse_qs
 from autonoma_cli.client import CampusClient
 from autonoma_cli.errors import AuthenticationError
 from autonoma_cli.files import Manifest, plan_course, run_plan
+from support.home import IsolatedHomeMixin
 
 LOGIN_PAGE = """<!doctype html><html><body>
 <form name="frmLogin" method="post" action="./Login.aspx" id="frmLogin">
@@ -167,7 +168,7 @@ class FakeCampus(BaseHTTPRequestHandler):
         self._send(404, b"not found")
 
 
-class FakeCampusTests(unittest.TestCase):
+class FakeCampusTests(IsolatedHomeMixin, unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.server = HTTPServer(("127.0.0.1", 0), FakeCampus)
@@ -181,6 +182,9 @@ class FakeCampusTests(unittest.TestCase):
         cls.server.server_close()
 
     def setUp(self) -> None:
+        # El codigo de alumno se guarda en la carpeta de configuracion: sin
+        # aislarla, el test escribiria el student.json real del usuario.
+        self.make_home()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.folder = Path(self.tmp.name)

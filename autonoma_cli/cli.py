@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--delay", type=float, default=None, help="Pausa entre peticiones en segundos")
     parser.add_argument("--out", default=None, help="Carpeta de descargas (por defecto: descargas)")
     parser.add_argument("--json", action="store_true", help="Salida JSON")
-    parser.add_argument("--refresh", action="store_true", help="Ignora la cache de cursos")
+    parser.add_argument("--refresh", action="store_true", help="Ignora la cache de cursos, horario, historial y recursos")
     parser.add_argument("--no-color", action="store_true", help="Desactiva color")
     parser.add_argument("-v", "--verbose", action="count", default=0)
 

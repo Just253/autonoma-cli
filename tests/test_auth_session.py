@@ -245,6 +245,14 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual(session.ensure_student_code(), "9000000001")
         self.assertEqual(transport.requests, [])
 
+    def test_ensure_student_code_uses_the_saved_code_first(self) -> None:
+        """Sin tocar ``student_code`` antes: el atajo tiene que servir igual."""
+
+        store = _Store("9000000001")
+        session, transport = self._session(student=store)
+        self.assertEqual(session.ensure_student_code(), "9000000001")
+        self.assertEqual(transport.requests, [])
+
     def test_login_persists_the_code(self) -> None:
         store = _Store()
         session, _ = self._session(
@@ -267,6 +275,18 @@ class AuthSessionTests(unittest.TestCase):
         self.assertEqual(store.code, "")
         self.assertEqual(session.ensure_student_code(), "9000000001")
         self.assertEqual(store.code, "9000000001")
+
+    def test_login_sin_codigo_borra_el_guardado(self) -> None:
+        """Un login que no trae codigo no puede dejar el de la cuenta anterior."""
+
+        store = _Store("9000000001")
+        session, _ = self._session(
+            _FakeResponse(LOGIN_URL, LOGIN_HTML),
+            _FakeResponse(HOME_URL, '<html><body>sin codigo</body></html>'),
+            student=store,
+        )
+        session.login("90000001", "clave-de-ejemplo")
+        self.assertEqual(store.code, "")
 
     def test_logout_clears_the_saved_code(self) -> None:
         store = _Store("9000000001")

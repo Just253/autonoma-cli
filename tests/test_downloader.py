@@ -16,6 +16,7 @@ from autonoma_cli.files import (
     course_folder,
     download_file,
     plan_course,
+    run_plan,
 )
 from autonoma_cli.models import Course, Resource
 from autonoma_cli.ui import human_size
@@ -260,6 +261,31 @@ class DownloadFileTests(unittest.TestCase):
         self.assertEqual(size, len(body))
         self.assertEqual(send.cookies, [False, True])
         self.assertEqual(self.target.read_bytes(), body)
+
+
+class RunPlanTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.items = plan_course(
+            make_course(),
+            [(1, [make_resource("A", url="a.pdf"), make_resource("B", url="b.pdf")])],
+            self.root,
+        )
+
+    def test_guarda_el_manifiesto_al_cortar_por_sesion_vencida(self) -> None:
+        manifest = Manifest(self.root)
+        send = FakeSend(
+            FakeResponse(b"%PDF-1.4 datos", url="https://x/a.pdf"),
+            SessionExpiredError("La sesion del campus expiro."),
+        )
+        stats = run_plan(self.items, manifest, send=send, headers=HEADERS, workers=1)
+
+        self.assertEqual(stats.downloaded, 1)
+        self.assertEqual(stats.failed, 1)
+        self.assertTrue((self.root / "manifest.json").exists())
+        self.assertEqual(len(Manifest(self.root).entries), 1)
 
 
 if __name__ == "__main__":

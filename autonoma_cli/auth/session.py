@@ -80,9 +80,13 @@ class AuthSession:
         return self._student_code
 
     def _remember(self) -> None:
-        """Persiste el codigo para la proxima corrida, si hay donde."""
+        """Persiste el codigo para la proxima corrida, si hay donde.
 
-        if self._student is not None and self._student_code:
+        Un login sin codigo borra el guardado: si no, el de la cuenta anterior
+        seguiria mandandose como ``cPerCodigo`` y armando las claves de cache.
+        """
+
+        if self._student is not None:
             self._student.save(self._student_code)
 
     def authenticate(

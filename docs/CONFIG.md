@@ -11,9 +11,10 @@ configuración**:
 | `credentials.json` | Usuario y contraseña (DPAPI en Windows, `0600` en el resto). |
 | `credentials.txt` | Alternativa editable a mano, en texto plano. |
 | `session.cookies` | Cookie `ASP.NET_SessionId`. |
+| `student.json` | Código de alumno de la última sesión, para las claves de caché. |
 | `pinned-ip.json` | Última IP del campus que validó certificado, 10 minutos. |
 | `settings.json` | Preferencias opcionales (ver abajo). |
-| `cache/cache.json` | Cursos, horario e historial, 6 horas. |
+| `cache/cache.json` | Cursos, horario e historial (6 h) y listas de recursos (1 h). |
 
 Nada de esto va al repositorio: `.gitignore` excluye credenciales, cookies,
 preferencias, caché y `descargas/`.
@@ -77,7 +78,8 @@ Precedencia: opciones de la línea de comandos > variables de entorno >
 ## Caché
 
 - `cache/cache.json` guarda cursos, horario por grupo e historial, con 6 horas
-  de vigencia.
+  de vigencia, y las listas de recursos de un curso, con 1 hora: el material
+  nuevo aparece durante la semana y `--refresh` fuerza la lectura.
 - Es un solo documento con `version` y `base_url`: si cambia el campus, la caché
   se descarta sola en vez de mezclar datos.
 - `autonoma cache` muestra el estado; `autonoma cache --borrar` la vacía.
