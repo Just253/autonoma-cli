@@ -71,9 +71,11 @@ class FakeSend:
     def __init__(self, *responses: object) -> None:
         self.responses = list(responses)
         self.requests: list[Request] = []
+        self.cookies: list[bool] = []
 
-    def __call__(self, request: Request) -> FakeResponse:
+    def __call__(self, request: Request, *, cookies: bool = True) -> FakeResponse:
         self.requests.append(request)
+        self.cookies.append(cookies)
         item = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if isinstance(item, BaseException):
             raise item
@@ -179,6 +181,7 @@ class DownloadFileTests(unittest.TestCase):
         self.assertEqual(request.get_header("Accept"), "*/*")
         self.assertEqual(request.get_header("Referer"), "https://x/Campus/Default.aspx")
         self.assertFalse([key for key in request.headers if key.lower() == "cookie"])
+        self.assertEqual(send.cookies, [False], "el archivo es publico: sin cookie")
 
     def test_empty_body_is_an_error_and_retries(self) -> None:
         send = FakeSend(FakeResponse(b""))

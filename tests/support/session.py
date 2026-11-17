@@ -60,7 +60,7 @@ class FakeSession:
         self.attempts = 0
         self.closed = False
 
-    def send(self, request: Any) -> Any:
+    def send(self, request: Any, *, cookies: bool = True) -> Any:
         self.attempts += 1
         self.requests.append(request)
         item = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]

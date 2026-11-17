@@ -56,6 +56,9 @@ class CampusSession:
         self._pinned_path = pinned_path
         self._pin_handler = net.PinnedHTTPSHandler()
         self._opener = build_opener(HTTPCookieProcessor(self.jar), self._pin_handler)
+        # Los archivos de /uploads son publicos: este opener evita mandar la
+        # cookie de sesion a pedidos que no la necesitan.
+        self._public_opener = build_opener(self._pin_handler)
         self._last_request = 0.0
         self.pin_ip = net.load_pin(pinned_path, self.host)
 
@@ -95,30 +98,33 @@ class CampusSession:
             net.drop_pin(self._pinned_path)
         return bool(ip)
 
-    def send(self, request: Request):
+    def send(self, request: Request, *, cookies: bool = True):
         """Hace el pedido con la pausa y el pin vigente.
 
-        Mapea los errores de red a ``CampusError`` y, si el certificado es de
-        otro sitio, prueba otra IP una sola vez.
+        ``cookies=False`` usa un opener sin el jar: los archivos de ``/uploads``
+        son publicos y no hace falta mandarles la sesion. Mapea los errores de
+        red a ``CampusError`` y, si el certificado es de otro sitio, prueba otra
+        IP una sola vez.
         """
 
-        return self._send(request, rerouted=False)
+        return self._send(request, rerouted=False, cookies=cookies)
 
-    def _send(self, request: Request, *, rerouted: bool):
+    def _send(self, request: Request, *, rerouted: bool, cookies: bool = True):
         self._wait()
+        opener = self._opener if cookies else self._public_opener
         try:
-            return self._opener.open(request, timeout=self.timeout)
+            return opener.open(request, timeout=self.timeout)
         except HTTPError as exc:
             raise CampusHTTPError(f"El campus respondio HTTP {exc.code}.", exc.code) from exc
         except URLError as exc:
             if not rerouted and net.cert_mismatch(exc) and self._route_around():
-                return self._send(request, rerouted=True)
+                return self._send(request, rerouted=True, cookies=cookies)
             if not rerouted and self.pin_ip:
                 # La IP recordada dejo de responder: se descarta y se reintenta
                 # una vez sin pin en vez de fallar el comando.
                 self.pin_ip = ""
                 net.drop_pin(self._pinned_path)
-                return self._send(request, rerouted=True)
+                return self._send(request, rerouted=True, cookies=cookies)
             self.pin_ip = ""
             if net.cert_mismatch(exc):
                 raise CampusError(
@@ -129,7 +135,7 @@ class CampusSession:
             raise CampusError(f"No se pudo conectar con el campus: {exc.reason}.") from exc
         except ssl.SSLCertVerificationError as exc:
             if not rerouted and self._route_around():
-                return self._send(request, rerouted=True)
+                return self._send(request, rerouted=True, cookies=cookies)
             raise CampusError(
                 "No se pudo conectar con el campus: el servidor presento un "
                 f"certificado de otro sitio ({exc}). Vuelve a intentarlo."
@@ -138,7 +144,8 @@ class CampusSession:
             raise CampusError("La conexion con el campus agoto el tiempo de espera.") from exc
 
     def close(self) -> None:
-        try:
-            self._opener.close()
-        except Exception:  # noqa: BLE001 - el opener no siempre lo implementa
-            pass
+        for opener in (self._opener, self._public_opener):
+            try:
+                opener.close()
+            except Exception:  # noqa: BLE001 - el opener no siempre lo implementa
+                pass

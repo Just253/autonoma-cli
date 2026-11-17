@@ -35,7 +35,7 @@ def run_plan(
     items: Sequence[DownloadItem],
     manifest: Manifest,
     *,
-    send: Callable[[Request], Any],
+    send: Callable[..., Any],
     headers: Mapping[str, str],
     workers: int = 1,
     force: bool = False,

@@ -120,6 +120,13 @@ class PinnedIpTests(IsolatedHomeMixin, unittest.TestCase):
         self.assertFalse(path.with_name(path.name + ".tmp").exists())
         self.assertEqual(net_module.load_pin(path, "campus-de-ejemplo.edu"), "192.0.2.10")
 
+    def test_si_falla_el_reemplazo_el_pin_anterior_sobrevive(self) -> None:
+        path = config.pinned_path()
+        net_module.save_pin(path, "campus-de-ejemplo.edu", "192.0.2.10")
+        with mock.patch("autonoma_cli.net.os.replace", side_effect=OSError("ocupado")):
+            net_module.save_pin(path, "campus-de-ejemplo.edu", "192.0.2.11")
+        self.assertEqual(net_module.load_pin(path, "campus-de-ejemplo.edu"), "192.0.2.10")
+
     def test_una_ip_muerta_se_descarta_y_se_reintenta(self) -> None:
         session = self._session()
         session.pin_ip = "192.0.2.10"

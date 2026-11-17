@@ -238,11 +238,11 @@ class FakeCampusTests(unittest.TestCase):
         self.assertEqual(stats.failed, 0)
         target = items[0].path
         self.assertEqual(target.read_bytes()[:5], b"%PDF-")
-        # La cookie la agrega el jar del opener y el User-Agent es el del
-        # cliente: no hay cabecera Cookie armada a mano ni un segundo agente.
+        # Los archivos de /uploads son publicos: el pedido no lleva la cookie
+        # de sesion, y el User-Agent es el del cliente.
         self.assertTrue(UPLOADS)
         self.assertTrue(
-            all("ASP.NET_SessionId=abc123" in seen["cookie"] for seen in UPLOADS),
+            all(not seen["cookie"] for seen in UPLOADS),
             UPLOADS,
         )
         self.assertEqual(

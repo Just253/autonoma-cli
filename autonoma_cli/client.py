@@ -86,8 +86,8 @@ class CampusClient:
     def close(self) -> None:
         self._session.close()
 
-    def send(self, request: Any) -> Any:
-        return self._session.send(request)
+    def send(self, request: Any, *, cookies: bool = True) -> Any:
+        return self._session.send(request, cookies=cookies)
 
     # -- sesion ----------------------------------------------------------- #
 

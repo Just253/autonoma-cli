@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -21,11 +22,12 @@ CHUNK = 64 * 1024
 # 4xx que si se reintentan: el servidor esta ocupado, no rechaza el pedido.
 RETRYABLE_4XX = frozenset({408, 429})
 # Una cookie vencida redirige aca; el cuerpo es el formulario, no el archivo.
-LOGIN_PATH = "/Campus/Login.aspx"
+# Hoy /uploads es publico, asi que esto es una red por si el campus lo protege.
+LOGIN_REDIRECT = re.compile(r"/Campus/Login\.aspx(?:$|[?#])", re.I)
 
 
 def download_file(
-    send: Callable[[Request], Any],
+    send: Callable[..., Any],
     url: str,
     destination: Path,
     *,
@@ -37,7 +39,8 @@ def download_file(
 
     Devuelve (bytes, sha256). Reintenta ante error de red o HTTP 5xx; un 4xx
     que no sea 408/429 corta el reintento. El tiempo limite lo aplica el
-    transporte de la sesion.
+    transporte de la sesion. Los archivos de ``/uploads`` son publicos, asi que
+    el pedido va sin la cookie de sesion.
     """
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -52,8 +55,8 @@ def download_file(
             request = Request(url, headers=request_headers)
             digest = hashlib.sha256()
             size = 0
-            with send(request) as response, partial.open("wb") as handle:
-                if LOGIN_PATH in response.geturl():
+            with send(request, cookies=False) as response, partial.open("wb") as handle:
+                if LOGIN_REDIRECT.search(response.geturl()):
                     raise SessionExpiredError("La sesion del campus expiro.")
                 while True:
                     chunk = response.read(CHUNK)
